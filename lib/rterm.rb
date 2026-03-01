@@ -1,8 +1,31 @@
 # frozen_string_literal: true
 
 require_relative "rterm/version"
+require_relative "rterm/common/types"
+require_relative "rterm/common/event_emitter"
+require_relative "rterm/common/buffer/constants"
+require_relative "rterm/common/buffer/cell_data"
+require_relative "rterm/common/buffer/buffer_line"
+require_relative "rterm/common/buffer/circular_list"
+require_relative "rterm/common/buffer/buffer"
+require_relative "rterm/common/buffer/buffer_set"
+require_relative "rterm/common/parser/parser_state"
+require_relative "rterm/common/parser/params"
+require_relative "rterm/common/parser/escape_sequence_parser"
+require_relative "rterm/common/unicode/unicode_handler"
+require_relative "rterm/common/input/input_handler"
+require_relative "rterm/common/core_terminal"
+require_relative "rterm/headless/headless_terminal"
+require_relative "rterm/pty/pty"
+require_relative "rterm/terminal"
+require_relative "rterm/browser_bridge/protocol_handler"
+require_relative "rterm/browser_bridge/session_manager"
+require_relative "rterm/addons/base"
+require_relative "rterm/addons/search/search"
+require_relative "rterm/addons/serialize/serialize"
+require_relative "rterm/addons/fit/fit"
+require_relative "rterm/addons/web_links/web_links"
 
-module Rterm
+module RTerm
   class Error < StandardError; end
-  # Your code goes here...
 end

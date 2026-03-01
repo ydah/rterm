@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
 module RTerm
-  VERSION = "0.1.0"
+  module Common
+  end
 end

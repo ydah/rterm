@@ -1,11 +1,7 @@
 # frozen_string_literal: true
 
-RSpec.describe Rterm do
+RSpec.describe RTerm do
   it "has a version number" do
-    expect(Rterm::VERSION).not_to be nil
-  end
-
-  it "does something useful" do
-    expect(false).to eq(true)
+    expect(RTerm::VERSION).not_to be_nil
   end
 end
