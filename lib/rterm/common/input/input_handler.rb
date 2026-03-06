@@ -125,8 +125,27 @@ module RTerm
           cursor_backward(n)
         end
 
+        # CNL - Cursor Next Line
+        @parser.set_csi_handler({ final: "E" }) do |params|
+          n = [params[0], 1].max
+          buffer.y = [buffer.y + n, buffer.rows - 1].min
+          carriage_return
+        end
+
+        # CPL - Cursor Preceding Line
+        @parser.set_csi_handler({ final: "F" }) do |params|
+          n = [params[0], 1].max
+          buffer.y = [buffer.y - n, 0].max
+          carriage_return
+        end
+
         # CUP - Cursor Position
         @parser.set_csi_handler({ final: "H" }) { |params| move_cursor_to(params) }
+
+        # CHT - Cursor Forward Tabulation
+        @parser.set_csi_handler({ final: "I" }) do |params|
+          tab([params[0], 1].max)
+        end
 
         # HVP - Horizontal Vertical Position (same as CUP)
         @parser.set_csi_handler({ final: "f" }) { |params| move_cursor_to(params) }
@@ -220,10 +239,28 @@ module RTerm
           buffer.y = [[row - 1, 0].max, buffer.rows - 1].min
         end
 
+        # VPR - Vertical Position Relative
+        @parser.set_csi_handler({ final: "e" }) do |params|
+          row = [params[0], 1].max
+          buffer.y = [buffer.y + row, buffer.rows - 1].min
+        end
+
         # CHA - Cursor Horizontal Absolute
         @parser.set_csi_handler({ final: "G" }) do |params|
           col = [params[0], 1].max
           buffer.x = [[col - 1, 0].max, buffer.cols - 1].min
+        end
+
+        # HPA - Horizontal Position Absolute
+        @parser.set_csi_handler({ final: "`" }) do |params|
+          col = [params[0], 1].max
+          buffer.x = [[col - 1, 0].max, buffer.cols - 1].min
+        end
+
+        # HPR - Horizontal Position Relative
+        @parser.set_csi_handler({ final: "a" }) do |params|
+          col = [params[0], 1].max
+          buffer.x = [buffer.x + col, buffer.cols - 1].min
         end
 
         # REP - Repeat Previous Character
@@ -232,6 +269,16 @@ module RTerm
             n = [params[0], 1].max
             print_chars(@last_printed_char * n)
           end
+        end
+
+        # TBC - Tab Clear
+        @parser.set_csi_handler({ final: "g" }) do |params|
+          clear_tab_stop(params[0])
+        end
+
+        # CBT - Cursor Backward Tabulation
+        @parser.set_csi_handler({ final: "Z" }) do |params|
+          backward_tab([params[0], 1].max)
         end
 
         # SCP - Save Cursor
@@ -262,6 +309,22 @@ module RTerm
       # ── ESC handlers ──
 
       def register_esc_handlers
+        # IND - Index
+        @parser.set_esc_handler({ final: "D" }) do
+          line_feed
+        end
+
+        # NEL - Next Line
+        @parser.set_esc_handler({ final: "E" }) do
+          line_feed
+          carriage_return
+        end
+
+        # HTS - Horizontal Tab Set
+        @parser.set_esc_handler({ final: "H" }) do
+          set_tab_stop
+        end
+
         # DECSC - Save Cursor
         @parser.set_esc_handler({ final: "7" }) do
           save_cursor_state
@@ -312,15 +375,18 @@ module RTerm
         buffer.x = [buffer.x - n, 0].max
       end
 
-      def tab
+      def tab(count = 1)
         buf = buffer
-        next_stop = buf.x + 1
-        while next_stop < buf.cols
-          break if buf.tabs[next_stop]
-
-          next_stop += 1
+        count.times do
+          buf.x = next_tab_stop(buf, buf.x)
         end
-        buf.x = [next_stop, buf.cols - 1].min
+      end
+
+      def backward_tab(count = 1)
+        buf = buffer
+        count.times do
+          buf.x = previous_tab_stop(buf, buf.x)
+        end
       end
 
       def line_feed
@@ -650,6 +716,39 @@ module RTerm
       def restore_cursor_state(target_buffer = buffer)
         restored_attr = target_buffer.restore_cursor
         @cur_attr = restored_attr if restored_attr
+      end
+
+      def set_tab_stop
+        buffer.tabs[buffer.x] = true
+      end
+
+      def clear_tab_stop(mode)
+        case mode
+        when 0
+          buffer.tabs.delete(buffer.x)
+        when 3
+          buffer.tabs.clear
+        end
+      end
+
+      def next_tab_stop(buf, from)
+        next_stop = from + 1
+        while next_stop < buf.cols
+          return next_stop if buf.tabs[next_stop]
+
+          next_stop += 1
+        end
+        buf.cols - 1
+      end
+
+      def previous_tab_stop(buf, from)
+        previous_stop = [from - 1, 0].max
+        while previous_stop > 0
+          return previous_stop if buf.tabs[previous_stop]
+
+          previous_stop -= 1
+        end
+        0
       end
     end
   end

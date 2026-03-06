@@ -198,6 +198,26 @@ RSpec.describe RTerm::Common::InputHandler do
       end
     end
 
+    describe "CNL (E) - cursor next line" do
+      it "moves down and returns to column 0" do
+        buffer.x = 10
+        buffer.y = 2
+        parse("\e[3E")
+        expect(buffer.x).to eq(0)
+        expect(buffer.y).to eq(5)
+      end
+    end
+
+    describe "CPL (F) - cursor preceding line" do
+      it "moves up and returns to column 0" do
+        buffer.x = 10
+        buffer.y = 5
+        parse("\e[3F")
+        expect(buffer.x).to eq(0)
+        expect(buffer.y).to eq(2)
+      end
+    end
+
     describe "CUP (H) - cursor position" do
       it "moves cursor to 1-based position (converted to 0-based)" do
         parse("\e[5;10H")
@@ -382,6 +402,21 @@ RSpec.describe RTerm::Common::InputHandler do
       end
     end
 
+    describe "HPA (`) - horizontal position absolute" do
+      it "moves cursor to absolute column (1-based)" do
+        parse("\e[12`")
+        expect(buffer.x).to eq(11)
+      end
+    end
+
+    describe "HPR (a) - horizontal position relative" do
+      it "moves cursor to the right" do
+        buffer.x = 3
+        parse("\e[5a")
+        expect(buffer.x).to eq(8)
+      end
+    end
+
     describe "HVP (f) - horizontal vertical position" do
       it "works like CUP" do
         parse("\e[5;10f")
@@ -390,10 +425,51 @@ RSpec.describe RTerm::Common::InputHandler do
       end
     end
 
+    describe "CHT (I) - cursor forward tabulation" do
+      it "moves to the next tab stops" do
+        buffer.x = 1
+        parse("\e[2I")
+        expect(buffer.x).to eq(16)
+      end
+    end
+
+    describe "CBT (Z) - cursor backward tabulation" do
+      it "moves to the previous tab stops" do
+        buffer.x = 17
+        parse("\e[2Z")
+        expect(buffer.x).to eq(8)
+      end
+    end
+
     describe "REP (b) - repeat previous character" do
       it "repeats the last printed character" do
         parse("A\e[4b")
         expect(line_text(0)).to eq("AAAAA")
+      end
+    end
+
+    describe "VPR (e) - vertical position relative" do
+      it "moves cursor down relative to the current row" do
+        buffer.y = 2
+        parse("\e[5e")
+        expect(buffer.y).to eq(7)
+      end
+    end
+
+    describe "TBC (g) - tab clear" do
+      it "clears the current tab stop" do
+        buffer.x = 8
+        parse("\e[g")
+        buffer.x = 1
+        parse("\e[I")
+        expect(buffer.x).to eq(16)
+      end
+
+      it "clears all tab stops with mode 3" do
+        parse("\e[3g")
+        buffer.x = 1
+        parse("\e[I")
+        expect(buffer.x).to eq(cols - 1)
       end
     end
 
@@ -561,6 +637,31 @@ RSpec.describe RTerm::Common::InputHandler do
   end
 
   describe "ESC sequences" do
+    describe "IND/NEL/HTS (D/E/H)" do
+      it "ESC D acts like index" do
+        buffer.y = 0
+        parse("\eD")
+        expect(buffer.y).to eq(1)
+      end
+
+      it "ESC E moves to the next line and column 0" do
+        buffer.x = 10
+        buffer.y = 0
+        parse("\eE")
+        expect(buffer.x).to eq(0)
+        expect(buffer.y).to eq(1)
+      end
+
+      it "ESC H sets a tab stop at the current column" do
+        parse("\e[3g")
+        buffer.x = 5
+        parse("\eH")
+        buffer.x = 0
+        parse("\e[I")
+        expect(buffer.x).to eq(5)
+      end
+    end
+
     describe "DECSC/DECRC (7/8) - save/restore cursor" do
       it "saves and restores cursor position" do
         buffer.x = 10

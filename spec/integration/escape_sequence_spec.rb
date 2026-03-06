@@ -63,14 +63,52 @@ RSpec.describe "Escape Sequence Integration" do
       expect(term.buffer.active.get_line(0).get_cell(6).char).to eq("x")
     end
 
+    it "CNL and CPL move between lines and reset to column 0" do
+      term.write("\e[2;10H\e[2Ex")
+      expect(term.buffer.active.get_line(3).get_cell(0).char).to eq("x")
+
+      term.write("\e[5;10H\e[2Fy")
+      expect(term.buffer.active.get_line(2).get_cell(0).char).to eq("y")
+    end
+
     it "CHA moves cursor to absolute column" do
       term.write("\e[1;1H\e[20Gx")
       expect(term.buffer.active.get_line(0).get_cell(19).char).to eq("x")
     end
 
+    it "HPA, HPR and VPR move cursor using xterm aliases" do
+      term.write("\e[12`x")
+      expect(term.buffer.active.get_line(0).get_cell(11).char).to eq("x")
+
+      term.write("\e[1;1H\e[5ay")
+      expect(term.buffer.active.get_line(0).get_cell(5).char).to eq("y")
+
+      term.write("\e[2ez")
+      expect(term.buffer.active.get_line(2).get_cell(6).char).to eq("z")
+    end
+
     it "VPA moves cursor to absolute row" do
       term.write("\e[10dx")
       expect(term.buffer.active.get_line(9).get_cell(0).char).to eq("x")
+    end
+
+    it "CHT and CBT move across tab stops" do
+      term.write("A\e[2IB")
+      expect(term.buffer.active.get_line(0).get_cell(16).char).to eq("B")
+
+      term.write("\e[1;18H\e[2ZC")
+      expect(term.buffer.active.get_line(0).get_cell(8).char).to eq("C")
+    end
+
+    it "HTS and TBC manage custom tab stops" do
+      term.write("\e[3g")
+      term.write("\e[1;6H\eH")
+      term.write("\e[1;1H\e[1ID")
+      expect(term.buffer.active.get_line(0).get_cell(5).char).to eq("D")
+
+      term.write("\e[1;6H\e[g")
+      term.write("\e[1;1H\e[1IE")
+      expect(term.buffer.active.get_line(0).get_cell(79).char).to eq("E")
     end
   end
 
@@ -292,6 +330,11 @@ RSpec.describe "Escape Sequence Integration" do
     it "reverse index scrolls down at top" do
       term.write("\e[1;1H\eM")
       expect(term.buffer.active.get_line(0).to_string).to eq("")
+    end
+
+    it "ESC E moves to the next line and column 0" do
+      term.write("Hello\eEX")
+      expect(term.buffer.active.get_line(1).get_cell(0).char).to eq("X")
     end
   end
 
