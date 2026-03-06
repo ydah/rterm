@@ -148,4 +148,18 @@ RSpec.describe RTerm::Common::UnicodeHandler do
       expect(handler.wide?(0x00)).to be false     # Control
     end
   end
+
+  describe "provider registry" do
+    it "registers and switches unicode providers" do
+      handler.register("narrow", ->(_codepoint) { 1 })
+      handler.active_version = "narrow"
+
+      expect(handler.versions).to include("rterm", "narrow")
+      expect(handler.char_width(0x1F600)).to eq(1)
+    end
+
+    it "raises for unknown unicode versions" do
+      expect { handler.active_version = "missing" }.to raise_error(ArgumentError)
+    end
+  end
 end

@@ -44,6 +44,49 @@ RSpec.describe RTerm::Terminal do
     end
   end
 
+  describe "#parser" do
+    it "registers custom parser handlers" do
+      received = nil
+      disposable = terminal.parser.register_osc_handler(1337) { |data| received = data }
+
+      terminal.write("\e]1337;custom\x07")
+      expect(received).to eq("custom")
+
+      disposable.dispose
+      terminal.write("\e]1337;ignored\x07")
+      expect(received).to eq("custom")
+    end
+  end
+
+  describe "#unicode" do
+    it "registers a unicode provider that affects rendering width" do
+      terminal.unicode.register("narrow", ->(_codepoint) { 1 })
+      terminal.unicode.active_version = "narrow"
+
+      terminal.write("🚀X")
+      expect(terminal.buffer.active.get_line(0).get_cell(1).char).to eq("X")
+    end
+  end
+
+  describe "#modes" do
+    it "reports current xterm-style terminal modes" do
+      terminal.write("\e[4h")
+      terminal.write("\e[?1h")
+      terminal.write("\e[?6h")
+      terminal.write("\e=")
+      terminal.write("\e[?2004h")
+
+      expect(terminal.modes).to include(
+        application_cursor_keys_mode: true,
+        application_keypad_mode: true,
+        bracketed_paste_mode: true,
+        insert_mode: true,
+        origin_mode: true,
+        wraparound_mode: true
+      )
+    end
+  end
+
   describe "#input" do
     it "emits data event for PTY forwarding" do
       received = nil
@@ -140,6 +183,15 @@ RSpec.describe RTerm::Terminal do
       terminal.writeln("Line 24") # This should cause scroll
       # The first line should have scrolled up
       expect(terminal.buffer.active.get_line(0).to_string).not_to eq("Line 0")
+    end
+
+    it "handles insert mode and origin mode" do
+      terminal.write("ABCD")
+      terminal.write("\e[1;3H\e[4hX")
+      expect(terminal.buffer.active.get_line(0).to_string).to eq("ABXCD")
+
+      terminal.write("\e[5;10r\e[?6h\e[1;1HY")
+      expect(terminal.buffer.active.get_line(4).get_cell(0).char).to eq("Y")
     end
   end
 end

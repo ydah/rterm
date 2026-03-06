@@ -53,6 +53,24 @@ module RTerm
       @buffer_namespace ||= BufferNamespace.new(@terminal.buffer_set)
     end
 
+    # Returns parser hooks for custom escape sequence handling.
+    # @return [ParserNamespace]
+    def parser
+      @parser_namespace ||= ParserNamespace.new(@terminal.parser)
+    end
+
+    # Returns unicode configuration and provider registration APIs.
+    # @return [UnicodeNamespace]
+    def unicode
+      @unicode_namespace ||= UnicodeNamespace.new(@terminal.unicode_handler)
+    end
+
+    # Returns the current terminal modes.
+    # @return [Hash<Symbol, Boolean>]
+    def modes
+      @terminal.input_handler.modes
+    end
+
     # --- Buffer Operations ---
 
     # Clears the terminal buffer.
@@ -145,6 +163,50 @@ module RTerm
 
     def initialize(buffer_set)
       @buffer_set = buffer_set
+    end
+  end
+
+  class ParserNamespace
+    def initialize(parser)
+      @parser = parser
+    end
+
+    def register_csi_handler(id, &block)
+      @parser.set_csi_handler(id, &block)
+    end
+
+    def register_esc_handler(id, &block)
+      @parser.set_esc_handler(id, &block)
+    end
+
+    def register_osc_handler(id, &block)
+      @parser.set_osc_handler(id, &block)
+    end
+
+    def register_dcs_handler(id, &block)
+      @parser.set_dcs_handler(id, &block)
+    end
+  end
+
+  class UnicodeNamespace
+    def initialize(unicode_handler)
+      @unicode_handler = unicode_handler
+    end
+
+    def active_version
+      @unicode_handler.active_version
+    end
+
+    def active_version=(version)
+      @unicode_handler.active_version = version
+    end
+
+    def versions
+      @unicode_handler.versions
+    end
+
+    def register(version, provider)
+      @unicode_handler.register(version, provider)
     end
   end
 end

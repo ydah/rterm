@@ -3,6 +3,8 @@
 module RTerm
   module Common
     class UnicodeHandler
+      DEFAULT_VERSION = "rterm".freeze
+
       WIDE_RANGES = [
         [0x1100, 0x115F],   # Hangul Jamo
         [0x231A, 0x231B],   # Watch, Hourglass
@@ -261,15 +263,42 @@ module RTerm
         [0xE0100, 0xE01EF], # Variation selectors supplement
       ].freeze
 
+      def initialize
+        @providers = { DEFAULT_VERSION => method(:builtin_char_width) }
+        @active_version = DEFAULT_VERSION
+      end
+
+      attr_reader :active_version
+
+      # @return [Array<String>] registered unicode provider versions
+      def versions
+        @providers.keys
+      end
+
+      # @param version [String]
+      # @return [void]
+      def active_version=(version)
+        raise ArgumentError, "Unknown unicode version: #{version}" unless @providers.key?(version)
+
+        @active_version = version
+      end
+
+      # @param version [String]
+      # @param provider [#char_width, #call]
+      # @return [void]
+      def register(version, provider)
+        @providers[version] = provider
+      end
+
       # Returns the display width of a character (0, 1, or 2)
       # @param codepoint [Integer] Unicode codepoint
       # @return [Integer] 0, 1, or 2
       def char_width(codepoint)
-        return 0 if control?(codepoint)
-        return 0 if in_ranges?(codepoint, ZERO_WIDTH_RANGES)
-        return 2 if in_ranges?(codepoint, WIDE_RANGES)
+        provider = @providers.fetch(@active_version)
+        return provider.char_width(codepoint) if provider.respond_to?(:char_width)
+        return provider.call(codepoint) if provider.respond_to?(:call)
 
-        1
+        raise ArgumentError, "Unicode provider must respond to #char_width or #call"
       end
 
       # @param codepoint [Integer]
@@ -279,6 +308,14 @@ module RTerm
       end
 
       private
+
+      def builtin_char_width(codepoint)
+        return 0 if control?(codepoint)
+        return 0 if in_ranges?(codepoint, ZERO_WIDTH_RANGES)
+        return 2 if in_ranges?(codepoint, WIDE_RANGES)
+
+        1
+      end
 
       def control?(codepoint)
         codepoint <= 0x1F || (codepoint >= 0x7F && codepoint <= 0x9F)
