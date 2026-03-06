@@ -487,6 +487,20 @@ RSpec.describe RTerm::Common::InputHandler do
         expect(buffer.scroll_bottom).to eq(rows - 1)
       end
     end
+
+    describe "SM/RM (h/l) - standard modes" do
+      it "enables and disables insert mode" do
+        parse("ABCD")
+        buffer.x = 2
+
+        parse("\e[4hX")
+        expect(line_text(0)).to eq("ABXCD")
+        expect(handler.insert_mode).to be true
+
+        parse("\e[4l")
+        expect(handler.insert_mode).to be false
+      end
+    end
   end
 
   describe "SGR (m) - set graphic rendition" do
@@ -662,6 +676,16 @@ RSpec.describe RTerm::Common::InputHandler do
       end
     end
 
+    describe "DECKPAM/DECKPNM (=/> ) - keypad mode" do
+      it "toggles application keypad mode" do
+        parse("\e=")
+        expect(handler.application_keypad_mode).to be true
+
+        parse("\e>")
+        expect(handler.application_keypad_mode).to be false
+      end
+    end
+
     describe "DECSC/DECRC (7/8) - save/restore cursor" do
       it "saves and restores cursor position" do
         buffer.x = 10
@@ -730,6 +754,35 @@ RSpec.describe RTerm::Common::InputHandler do
   end
 
   describe "DEC private modes" do
+    describe "DECCKM (1) - application cursor keys" do
+      it "enables and disables application cursor keys mode" do
+        parse("\e[?1h")
+        expect(handler.application_cursor_keys_mode).to be true
+
+        parse("\e[?1l")
+        expect(handler.application_cursor_keys_mode).to be false
+      end
+    end
+
+    describe "DECOM (6) - origin mode" do
+      it "moves CUP relative to the scroll region when enabled" do
+        parse("\e[5;10r")
+        parse("\e[?6h")
+        parse("\e[1;1H")
+        expect(buffer.y).to eq(4)
+        expect(handler.origin_mode).to be true
+      end
+
+      it "returns to absolute positioning when disabled" do
+        parse("\e[5;10r")
+        parse("\e[?6h")
+        parse("\e[?6l")
+        parse("\e[1;1H")
+        expect(buffer.y).to eq(0)
+        expect(handler.origin_mode).to be false
+      end
+    end
+
     describe "DECTCEM (25) - cursor visibility" do
       it "hides cursor" do
         parse("\e[?25l")

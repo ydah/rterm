@@ -10,21 +10,43 @@ module RTerm
       include EventEmitter
       include BufferConstants
 
-      attr_reader :autowrap, :cursor_hidden, :bracketed_paste_mode
+      attr_reader :autowrap, :cursor_hidden, :bracketed_paste_mode, :insert_mode,
+                  :origin_mode, :application_cursor_keys_mode, :application_keypad_mode
 
-      def initialize(buffer_set, parser, options = {})
+      def initialize(buffer_set, parser, unicode_handler = nil, options = {})
+        if unicode_handler.is_a?(Hash)
+          options = unicode_handler
+          unicode_handler = nil
+        end
+
         @buffer_set = buffer_set
         @parser = parser
+        @unicode_handler = unicode_handler || UnicodeHandler.new
         @cur_attr = CellData.new
         @autowrap = true
         @cursor_hidden = false
         @bracketed_paste_mode = false
+        @insert_mode = false
+        @origin_mode = false
+        @application_cursor_keys_mode = false
+        @application_keypad_mode = false
         @last_printed_char = nil
         @erase_cell = CellData.new
         @print_cell = CellData.new
         @spacer_cell = CellData.new.tap { |c| c.width = 0 }
 
         register_handlers
+      end
+
+      def modes
+        {
+          application_cursor_keys_mode: @application_cursor_keys_mode,
+          application_keypad_mode: @application_keypad_mode,
+          bracketed_paste_mode: @bracketed_paste_mode,
+          insert_mode: @insert_mode,
+          origin_mode: @origin_mode,
+          wraparound_mode: @autowrap
+        }
       end
 
       private
@@ -80,6 +102,8 @@ module RTerm
 
           line = buf.get_line(buf.y)
           next unless line
+
+          line.insert_cells(buf.x, width, erase_cell) if @insert_mode && width.positive?
 
           @print_cell.copy_from(@cur_attr)
           @print_cell.char = ch
@@ -229,8 +253,7 @@ module RTerm
             buffer.scroll_top = [[top - 1, 0].max, buffer.rows - 1].min
             buffer.scroll_bottom = [[(bottom.zero? ? buffer.rows : bottom) - 1, 0].max, buffer.rows - 1].min
           end
-          buffer.x = 0
-          buffer.y = 0
+          reset_cursor_to_home
         end
 
         # VPA - Vertical Position Absolute
@@ -291,6 +314,20 @@ module RTerm
           restore_cursor_state
         end
 
+        # SM - Set Mode
+        @parser.set_csi_handler({ final: "h" }) do |params|
+          params.length.times do |i|
+            set_mode(params[i])
+          end
+        end
+
+        # RM - Reset Mode
+        @parser.set_csi_handler({ final: "l" }) do |params|
+          params.length.times do |i|
+            reset_mode(params[i])
+          end
+        end
+
         # DECSM - DEC Private Mode Set (CSI ? h)
         @parser.set_csi_handler({ prefix: "?", final: "h" }) do |params|
           params.length.times do |i|
@@ -323,6 +360,16 @@ module RTerm
         # HTS - Horizontal Tab Set
         @parser.set_esc_handler({ final: "H" }) do
           set_tab_stop
+        end
+
+        # DECKPAM - Application Keypad
+        @parser.set_esc_handler({ final: "=" }) do
+          @application_keypad_mode = true
+        end
+
+        # DECKPNM - Numeric Keypad
+        @parser.set_esc_handler({ final: ">" }) do
+          @application_keypad_mode = false
         end
 
         # DECSC - Save Cursor
@@ -438,7 +485,9 @@ module RTerm
       def move_cursor_to(params)
         row = [params[0], 1].max
         col = params.length > 1 ? [params[1], 1].max : 1
-        buffer.y = [[row - 1, 0].max, buffer.rows - 1].min
+        top = @origin_mode ? buffer.scroll_top : 0
+        bottom = @origin_mode ? buffer.scroll_bottom : buffer.rows - 1
+        buffer.y = [[top + row - 1, top].max, bottom].min
         buffer.x = [[col - 1, 0].max, buffer.cols - 1].min
       end
 
@@ -629,6 +678,11 @@ module RTerm
 
       def dec_private_mode_set(mode)
         case mode
+        when 1
+          @application_cursor_keys_mode = true
+        when 6
+          @origin_mode = true
+          reset_cursor_to_home
         when 7
           @autowrap = true
         when 25
@@ -647,6 +701,11 @@ module RTerm
 
       def dec_private_mode_reset(mode)
         case mode
+        when 1
+          @application_cursor_keys_mode = false
+        when 6
+          @origin_mode = false
+          reset_cursor_to_home
         when 7
           @autowrap = false
         when 25
@@ -675,6 +734,10 @@ module RTerm
         @autowrap = true
         @cursor_hidden = false
         @bracketed_paste_mode = false
+        @insert_mode = false
+        @origin_mode = false
+        @application_cursor_keys_mode = false
+        @application_keypad_mode = false
         @last_printed_char = nil
         buf.rows.times do |y|
           buf.get_line(y)&.replace_cells(0, buf.cols, CellData.new)
@@ -684,29 +747,7 @@ module RTerm
       # ── Character width ──
 
       def char_width(ch)
-        cp = ch.ord
-        return 2 if east_asian_fullwidth?(cp)
-
-        1
-      end
-
-      def east_asian_fullwidth?(cp)
-        (cp >= 0x1100 && cp <= 0x115F) ||
-          cp == 0x2329 || cp == 0x232A ||
-          (cp >= 0x2E80 && cp <= 0x303E) ||
-          (cp >= 0x3040 && cp <= 0x33BF) ||
-          (cp >= 0x3400 && cp <= 0x4DBF) ||
-          (cp >= 0x4E00 && cp <= 0xA4CF) ||
-          (cp >= 0xA960 && cp <= 0xA97C) ||
-          (cp >= 0xAC00 && cp <= 0xD7A3) ||
-          (cp >= 0xF900 && cp <= 0xFAFF) ||
-          (cp >= 0xFE10 && cp <= 0xFE19) ||
-          (cp >= 0xFE30 && cp <= 0xFE6B) ||
-          (cp >= 0xFF01 && cp <= 0xFF60) ||
-          (cp >= 0xFFE0 && cp <= 0xFFE6) ||
-          (cp >= 0x1F000 && cp <= 0x1F9FF) ||
-          (cp >= 0x20000 && cp <= 0x2FFFD) ||
-          (cp >= 0x30000 && cp <= 0x3FFFD)
+        @unicode_handler.char_width(ch.ord)
       end
 
       def save_cursor_state(target_buffer = buffer)
@@ -716,6 +757,25 @@ module RTerm
       def restore_cursor_state(target_buffer = buffer)
         restored_attr = target_buffer.restore_cursor
         @cur_attr = restored_attr if restored_attr
+      end
+
+      def set_mode(mode)
+        case mode
+        when 4
+          @insert_mode = true
+        end
+      end
+
+      def reset_mode(mode)
+        case mode
+        when 4
+          @insert_mode = false
+        end
+      end
+
+      def reset_cursor_to_home
+        buffer.x = 0
+        buffer.y = @origin_mode ? buffer.scroll_top : 0
       end
 
       def set_tab_stop

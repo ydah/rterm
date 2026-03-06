@@ -28,7 +28,7 @@ module RTerm
         @unicode_handler = UnicodeHandler.new
         @buffer_set = BufferSet.new(@cols, @rows, @scrollback)
         @parser = EscapeSequenceParser.new
-        @input_handler = InputHandler.new(@buffer_set, @parser, options)
+        @input_handler = InputHandler.new(@buffer_set, @parser, @unicode_handler, options)
 
         wire_events
       end
