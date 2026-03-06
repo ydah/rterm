@@ -19,7 +19,8 @@ module RTerm
       end
 
       # Switches to the alternate screen buffer.
-      def activate_alt_buffer
+      def activate_alt_buffer(clear: false)
+        @alt.clear if clear
         @active = @alt
       end
 

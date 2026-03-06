@@ -98,16 +98,18 @@ module RTerm
         @y = [@y, new_rows - 1].min
       end
 
-      # Saves the current cursor position and attributes.
-      def save_cursor
+      # Saves the current cursor position and optional attributes.
+      def save_cursor(cur_attr = nil)
         @saved_x = @x
         @saved_y = @y
+        @saved_cur_attr = cur_attr&.clone
       end
 
-      # Restores the previously saved cursor position and attributes.
+      # Restores the previously saved cursor position and returns saved attributes.
       def restore_cursor
-        @x = @saved_x
-        @y = @saved_y
+        @x = [@saved_x, @cols - 1].min
+        @y = [@saved_y, @rows - 1].min
+        @saved_cur_attr&.clone
       end
 
       # Clears all lines in the buffer.
@@ -119,6 +121,9 @@ module RTerm
         @y_disp = 0
         @x = 0
         @y = 0
+        @saved_x = 0
+        @saved_y = 0
+        @saved_cur_attr = nil
       end
 
       private

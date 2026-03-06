@@ -19,7 +19,6 @@ module RTerm
         @autowrap = true
         @cursor_hidden = false
         @bracketed_paste_mode = false
-        @saved_cur_attr = nil
         @last_printed_char = nil
         @erase_cell = CellData.new
         @print_cell = CellData.new
@@ -235,6 +234,16 @@ module RTerm
           end
         end
 
+        # SCP - Save Cursor
+        @parser.set_csi_handler({ final: "s" }) do
+          save_cursor_state
+        end
+
+        # RCP - Restore Cursor
+        @parser.set_csi_handler({ final: "u" }) do
+          restore_cursor_state
+        end
+
         # DECSM - DEC Private Mode Set (CSI ? h)
         @parser.set_csi_handler({ prefix: "?", final: "h" }) do |params|
           params.length.times do |i|
@@ -255,14 +264,12 @@ module RTerm
       def register_esc_handlers
         # DECSC - Save Cursor
         @parser.set_esc_handler({ final: "7" }) do
-          buffer.save_cursor
-          @saved_cur_attr = @cur_attr.clone
+          save_cursor_state
         end
 
         # DECRC - Restore Cursor
         @parser.set_esc_handler({ final: "8" }) do
-          buffer.restore_cursor
-          @cur_attr = @saved_cur_attr.clone if @saved_cur_attr
+          restore_cursor_state
         end
 
         # RI - Reverse Index
@@ -560,8 +567,13 @@ module RTerm
           @autowrap = true
         when 25
           @cursor_hidden = false
-        when 47, 1047, 1049
-          @buffer_set.activate_alt_buffer
+        when 47, 1047
+          @buffer_set.activate_alt_buffer(clear: true)
+        when 1048
+          save_cursor_state
+        when 1049
+          save_cursor_state
+          @buffer_set.activate_alt_buffer(clear: true)
         when 2004
           @bracketed_paste_mode = true
         end
@@ -573,8 +585,13 @@ module RTerm
           @autowrap = false
         when 25
           @cursor_hidden = true
-        when 47, 1047, 1049
+        when 47, 1047
           @buffer_set.activate_normal_buffer
+        when 1048
+          restore_cursor_state
+        when 1049
+          @buffer_set.activate_normal_buffer
+          restore_cursor_state
         when 2004
           @bracketed_paste_mode = false
         end
@@ -592,7 +609,6 @@ module RTerm
         @autowrap = true
         @cursor_hidden = false
         @bracketed_paste_mode = false
-        @saved_cur_attr = nil
         @last_printed_char = nil
         buf.rows.times do |y|
           buf.get_line(y)&.replace_cells(0, buf.cols, CellData.new)
@@ -625,6 +641,15 @@ module RTerm
           (cp >= 0x1F000 && cp <= 0x1F9FF) ||
           (cp >= 0x20000 && cp <= 0x2FFFD) ||
           (cp >= 0x30000 && cp <= 0x3FFFD)
+      end
+
+      def save_cursor_state(target_buffer = buffer)
+        target_buffer.save_cursor(@cur_attr)
+      end
+
+      def restore_cursor_state(target_buffer = buffer)
+        restored_attr = target_buffer.restore_cursor
+        @cur_attr = restored_attr if restored_attr
       end
     end
   end

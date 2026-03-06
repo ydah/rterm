@@ -679,6 +679,63 @@ RSpec.describe RTerm::Common::InputHandler do
         parse("\e[?1049l")
         expect(buffer_set.active).to eq(buffer_set.normal)
       end
+
+      it "clears the alternate buffer on entry" do
+        buffer_set.alt.get_line(0).set_cell(0, RTerm::Common::CellData.new.tap { |cell| cell.char = "X" })
+        parse("\e[?1049h")
+
+        expect(buffer_set.alt.get_line(0).to_string).to eq("")
+        expect(buffer_set.alt.x).to eq(0)
+        expect(buffer_set.alt.y).to eq(0)
+      end
+
+      it "restores the normal buffer cursor when leaving 1049 mode" do
+        buffer.x = 5
+        buffer.y = 3
+        parse("\e[?1049h")
+
+        buffer_set.alt.x = 0
+        buffer_set.alt.y = 0
+
+        parse("\e[?1049l")
+
+        expect(buffer_set.normal.x).to eq(5)
+        expect(buffer_set.normal.y).to eq(3)
+      end
+    end
+
+    describe "Save/restore cursor mode (1048)" do
+      it "restores cursor position and attributes" do
+        buffer.x = 4
+        buffer.y = 2
+        parse("\e[31m")
+        parse("\e[?1048h")
+
+        buffer.x = 0
+        buffer.y = 0
+        parse("\e[32m")
+        parse("\e[?1048lX")
+
+        cell = buffer.get_line(2).get_cell(4)
+        expect(cell.char).to eq("X")
+        expect(cell.fg_color_mode).to eq(:p16)
+        expect(cell.fg_color).to eq(1)
+      end
+    end
+  end
+
+  describe "save/restore cursor" do
+    it "supports CSI s/u" do
+      buffer.x = 7
+      buffer.y = 5
+      parse("\e[s")
+
+      buffer.x = 0
+      buffer.y = 0
+      parse("\e[u")
+
+      expect(buffer.x).to eq(7)
+      expect(buffer.y).to eq(5)
     end
   end
 

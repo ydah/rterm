@@ -230,10 +230,32 @@ RSpec.describe "Escape Sequence Integration" do
       term.write("Normal content")
       term.write("\e[?1049h")
       expect(term.buffer.active).to eq(term.buffer.alt)
+      expect(term.buffer.active.get_line(0).to_string).to eq("")
       term.write("Alt content")
       term.write("\e[?1049l")
       expect(term.buffer.active).to eq(term.buffer.normal)
       expect(term.buffer.active.get_line(0).to_string).to eq("Normal content")
+    end
+
+    it "restores cursor position when leaving alternate buffer" do
+      term.write("\e[5;10H")
+      term.write("\e[?1049h")
+      term.write("\e[1;1H")
+      term.write("\e[?1049lX")
+
+      expect(term.buffer.normal.get_line(4).get_cell(9).char).to eq("X")
+    end
+
+    it "restores cursor and attributes with DEC save cursor mode" do
+      term.write("\e[3;4H\e[31m")
+      term.write("\e[?1048h")
+      term.write("\e[1;1H\e[32m")
+      term.write("\e[?1048lX")
+
+      cell = term.buffer.active.get_line(2).get_cell(3)
+      expect(cell.char).to eq("X")
+      expect(cell.fg_color_mode).to eq(:p16)
+      expect(cell.fg_color).to eq(1)
     end
 
     it "DECTCEM hides and shows cursor" do
@@ -256,6 +278,14 @@ RSpec.describe "Escape Sequence Integration" do
       term.write("\e[5;10H\e7")
       term.write("\e[1;1HOverwrite")
       term.write("\e8X")
+      expect(term.buffer.active.get_line(4).get_cell(9).char).to eq("X")
+    end
+
+    it "CSI s/u saves and restores position" do
+      term.write("\e[5;10H\e[s")
+      term.write("\e[1;1H")
+      term.write("\e[uX")
+
       expect(term.buffer.active.get_line(4).get_cell(9).char).to eq("X")
     end
 
