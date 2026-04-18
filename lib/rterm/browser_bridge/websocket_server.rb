@@ -7,12 +7,29 @@ module RTerm
   module BrowserBridge
     # WebSocket entry point for browser-based xterm.js clients.
     class WebSocketServer
-      Config = Struct.new(:default_command, :max_sessions, :terminal_options, keyword_init: true)
+      Config = Struct.new(
+        :default_command,
+        :max_sessions,
+        :terminal_options,
+        :session_timeout,
+        :idle_timeout,
+        :authenticator,
+        :output_queue_limit,
+        keyword_init: true
+      )
 
       class << self
         # @return [Config]
         def config
-          @config ||= Config.new(default_command: nil, max_sessions: 10, terminal_options: {})
+          @config ||= Config.new(
+            default_command: nil,
+            max_sessions: 10,
+            terminal_options: {},
+            session_timeout: nil,
+            idle_timeout: nil,
+            authenticator: nil,
+            output_queue_limit: 1_048_576
+          )
         end
 
         # @yield [Config]
@@ -28,7 +45,11 @@ module RTerm
           @session_manager ||= SessionManager.new(
             max_sessions: config.max_sessions,
             default_command: config.default_command,
-            terminal_options: config.terminal_options
+            terminal_options: config.terminal_options,
+            session_timeout: config.session_timeout,
+            idle_timeout: config.idle_timeout,
+            authenticator: config.authenticator,
+            output_queue_limit: config.output_queue_limit
           )
         end
 
