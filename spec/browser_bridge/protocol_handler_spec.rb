@@ -108,6 +108,32 @@ RSpec.describe RTerm::BrowserBridge::SessionManager do
       expect { manager.create_session }
         .to raise_error(RTerm::BrowserBridge::SessionError, /Maximum sessions/)
     end
+
+    it 'cleans up sessions past absolute timeout' do
+      now = Time.at(100)
+      timed = described_class.new(max_sessions: 3, session_timeout: 10, clock: -> { now })
+      id = timed.create_session
+
+      now = Time.at(111)
+      timed.cleanup_expired
+
+      expect(timed.session_exists?(id)).to be false
+    end
+
+    it 'cleans up idle sessions' do
+      now = Time.at(100)
+      timed = described_class.new(max_sessions: 3, idle_timeout: 10, clock: -> { now })
+      id = timed.create_session
+      now = Time.at(105)
+      timed.write(id, "touch")
+      now = Time.at(114)
+      timed.cleanup_expired
+      expect(timed.session_exists?(id)).to be true
+
+      now = Time.at(116)
+      timed.cleanup_expired
+      expect(timed.session_exists?(id)).to be false
+    end
   end
 
   describe '#destroy_session' do
@@ -157,6 +183,26 @@ RSpec.describe RTerm::BrowserBridge::SessionManager do
       pty_manager.destroy_session(id)
 
       expect(received).to include("bridge")
+    end
+
+    it 'removes PTY-backed sessions when the process exits' do
+      skip "PTY not available" unless defined?(::PTY)
+
+      pty_manager = described_class.new(max_sessions: 1)
+      exited = nil
+      pty_manager.on_exit { |session_id, code| exited = [session_id, code] }
+
+      id = pty_manager.create_session(command: "/bin/echo", args: ["done"])
+      pty_manager.on_output { |_session_id, _data| }
+
+      10.times do
+        break unless pty_manager.session_exists?(id)
+
+        sleep 0.1
+      end
+
+      expect(pty_manager.session_exists?(id)).to be false
+      expect(exited).to eq([id, 0])
     end
   end
 
@@ -221,6 +267,43 @@ RSpec.describe RTerm::BrowserBridge::SessionManager do
       response = manager.process_message(msg)
       parsed = JSON.parse(response)
       expect(parsed['type']).to eq('error')
+    end
+
+    it 'uses auth hooks to reject messages' do
+      secure = described_class.new(authenticator: ->(_message) { false })
+      msg = { type: 'ping', session_id: nil, payload: {} }
+
+      response = secure.process_message(msg)
+      parsed = JSON.parse(response)
+
+      expect(parsed['type']).to eq('error')
+      expect(parsed['payload']['message']).to include('Unauthorized')
+    end
+  end
+
+  describe 'output backpressure' do
+    it 'queues and flushes output when auto flushing is disabled' do
+      queued = described_class.new(auto_flush_output: false)
+      id = queued.create_session
+      received = +""
+      queued.on_output { |_session_id, data| received << data }
+
+      queued.queue_output(id, "abc")
+      expect(received).to eq("")
+      expect(queued.pending_output_bytes(id)).to eq(3)
+
+      queued.flush_output(id)
+      expect(received).to eq("abc")
+      expect(queued.pending_output_bytes(id)).to eq(0)
+    end
+
+    it 'destroys sessions that exceed output queue limits' do
+      queued = described_class.new(auto_flush_output: false, output_queue_limit: 2)
+      id = queued.create_session
+
+      queued.queue_output(id, "abc")
+
+      expect(queued.session_exists?(id)).to be false
     end
   end
 

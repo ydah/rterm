@@ -11,11 +11,20 @@ module RTerm
       attr_reader :max_sessions
 
       # @param max_sessions [Integer] maximum number of concurrent sessions
-      def initialize(max_sessions: 10, default_command: nil, terminal_options: {})
+      def initialize(max_sessions: 10, default_command: nil, terminal_options: {},
+                     session_timeout: nil, idle_timeout: nil, authenticator: nil,
+                     output_queue_limit: 1_048_576, auto_flush_output: true,
+                     clock: -> { Time.now })
         @sessions = {}
         @max_sessions = max_sessions
         @default_command = default_command
         @terminal_options = terminal_options
+        @session_timeout = session_timeout
+        @idle_timeout = idle_timeout
+        @authenticator = authenticator
+        @output_queue_limit = output_queue_limit
+        @auto_flush_output = auto_flush_output
+        @clock = clock
         @output_callbacks = []
         @exit_callbacks = []
       end
@@ -43,7 +52,10 @@ module RTerm
         @sessions[session_id] = {
           terminal: terminal,
           pty: pty,
-          created_at: Time.now
+          created_at: now,
+          last_activity_at: now,
+          output_queue: [],
+          queued_output_bytes: 0
         }
 
         session_id
@@ -65,10 +77,7 @@ module RTerm
       # @return [RTerm::Terminal]
       # @raise [SessionError] if session not found
       def get_terminal(session_id)
-        session = @sessions[session_id]
-        raise SessionError, "Session not found: #{session_id}" unless session
-
-        session[:terminal]
+        get_session(session_id)[:terminal]
       end
 
       # Writes input data to a session's terminal.
@@ -76,6 +85,7 @@ module RTerm
       # @param data [String]
       def write(session_id, data)
         session = get_session(session_id)
+        touch(session)
         if session[:pty]
           session[:terminal].input(data)
         else
@@ -89,6 +99,7 @@ module RTerm
       # @param rows [Integer]
       def resize(session_id, cols, rows)
         session = get_session(session_id)
+        touch(session)
         session[:terminal].resize(cols, rows)
         session[:pty]&.resize(cols, rows)
       end
@@ -105,10 +116,51 @@ module RTerm
         @exit_callbacks << block
       end
 
+      # Queues output and flushes it to subscribers unless backpressure is enabled.
+      # @param session_id [String]
+      # @param data [String]
+      def queue_output(session_id, data)
+        session = get_session(session_id)
+        bytes = data.to_s.bytesize
+        if session[:queued_output_bytes] + bytes > @output_queue_limit
+          destroy_session(session_id)
+          @exit_callbacks.each { |callback| callback.call(session_id, nil) }
+          return
+        end
+
+        session[:output_queue] << data
+        session[:queued_output_bytes] += bytes
+        flush_output(session_id) if @auto_flush_output
+      end
+
+      # Flushes queued output to subscribers.
+      # @param session_id [String, nil]
+      def flush_output(session_id = nil)
+        ids = session_id ? [session_id] : session_ids
+        ids.each { |id| flush_session_output(id) }
+      end
+
+      # @param session_id [String]
+      # @return [Integer]
+      def pending_output_bytes(session_id)
+        get_session(session_id)[:queued_output_bytes]
+      end
+
+      # Destroys expired or idle sessions.
+      # @return [Array<String>] destroyed session IDs
+      def cleanup_expired
+        expired = @sessions.select { |_id, session| expired?(session) }.keys
+        expired.each { |session_id| destroy_session(session_id) }
+        expired
+      end
+
       # Processes an incoming protocol message.
       # @param message [Hash] decoded protocol message
       # @return [String, nil] response message (JSON) or nil
       def process_message(message)
+        return ProtocolHandler.error("Unauthorized") unless authorized?(message)
+
+        cleanup_expired
         case message[:type]
         when ProtocolHandler::MessageType::CREATE_SESSION
           payload = message[:payload]
@@ -173,6 +225,37 @@ module RTerm
         session
       end
 
+      def now
+        @clock.call
+      end
+
+      def touch(session)
+        session[:last_activity_at] = now
+      end
+
+      def expired?(session)
+        current = now
+        return true if @session_timeout && current - session[:created_at] > @session_timeout
+        return true if @idle_timeout && current - session[:last_activity_at] > @idle_timeout
+
+        false
+      end
+
+      def authorized?(message)
+        return true unless @authenticator
+
+        @authenticator.call(message) == true
+      end
+
+      def flush_session_output(session_id)
+        session = get_session(session_id)
+        until session[:output_queue].empty?
+          data = session[:output_queue].shift
+          session[:queued_output_bytes] -= data.to_s.bytesize
+          @output_callbacks.each { |callback| callback.call(session_id, data) }
+        end
+      end
+
       def create_pty(options, cols, rows)
         command = options.key?(:command) ? options[:command] : @default_command
         return nil if command.nil? || command.empty?
@@ -190,9 +273,11 @@ module RTerm
         terminal.on(:data) { |data| pty.write(data) }
         pty.on_data do |data|
           terminal.write(data)
-          @output_callbacks.each { |callback| callback.call(session_id, data) }
+          queue_output(session_id, data) if session_exists?(session_id)
         end
         pty.on_exit do |code|
+          session = @sessions.delete(session_id)
+          session[:terminal].dispose if session
           @exit_callbacks.each { |callback| callback.call(session_id, code) }
         end
       end
