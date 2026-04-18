@@ -127,6 +127,19 @@ module RTerm
         @saved_cur_attr = nil
       end
 
+      # Returns the visible wrapped range containing a row.
+      # @param y [Integer]
+      # @return [Range]
+      def get_wrapped_range_for_line(y)
+        first = y
+        first -= 1 while first.positive? && get_line(first - 1)&.is_wrapped
+
+        last = y
+        last += 1 while last < @rows - 1 && get_line(last)&.is_wrapped
+
+        first..last
+      end
+
       private
 
       def new_blank_line

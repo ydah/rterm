@@ -258,6 +258,14 @@ module RTerm
       @parser.set_csi_handler(id, &block)
     end
 
+    def set_print_handler(&block)
+      @parser.set_print_handler(&block)
+    end
+
+    def set_execute_handler(code, &block)
+      @parser.set_execute_handler(code, &block)
+    end
+
     def register_esc_handler(id, &block)
       @parser.set_esc_handler(id, &block)
     end
@@ -269,6 +277,11 @@ module RTerm
     def register_dcs_handler(id, &block)
       @parser.set_dcs_handler(id, &block)
     end
+
+    alias set_csi_handler register_csi_handler
+    alias set_esc_handler register_esc_handler
+    alias set_osc_handler register_osc_handler
+    alias set_dcs_handler register_dcs_handler
   end
 
   class UnicodeNamespace
