@@ -13,6 +13,7 @@ module RTerm
     def initialize(options = {})
       @terminal = Headless::HeadlessTerminal.new(options)
       @addons = []
+      @selection = nil
     end
 
     # @return [Integer] number of columns
@@ -71,6 +72,12 @@ module RTerm
       @terminal.input_handler.modes
     end
 
+    # Returns the current terminal options.
+    # @return [TerminalOptions]
+    def options
+      @terminal.options
+    end
+
     # --- Buffer Operations ---
 
     # Clears the terminal buffer.
@@ -97,6 +104,40 @@ module RTerm
     # Scrolls to the bottom.
     def scroll_to_bottom
       @terminal.scroll_to_bottom
+    end
+
+    # Selects text from the active buffer.
+    # @param column [Integer] start column
+    # @param row [Integer] start row
+    # @param length [Integer] number of characters to select
+    def select(column, row, length)
+      @selection = {
+        column: [column.to_i, 0].max,
+        row: [row.to_i, 0].max,
+        length: [length.to_i, 0].max
+      }
+    end
+
+    # Selects all visible text in the active buffer.
+    def select_all
+      lines = visible_text_lines
+      @selection = {
+        column: 0,
+        row: 0,
+        length: lines.sum(&:length)
+      }
+    end
+
+    # @return [String] selected text
+    def selection
+      return "" unless @selection && @selection[:length].positive?
+
+      selected_buffer_text(@selection[:column], @selection[:row], @selection[:length])
+    end
+
+    # Clears the current text selection.
+    def clear_selection
+      @selection = nil
     end
 
     # --- Resize ---
@@ -139,6 +180,45 @@ module RTerm
     # @api private
     def internal
       @terminal
+    end
+
+    private
+
+    def visible_selection_text
+      visible_text_lines.join("\r\n")
+    end
+
+    def visible_text_lines
+      active = buffer.active
+      lines = active.rows.times.map do |row|
+        active.get_line(row)&.to_string || ""
+      end
+      lines.pop while lines.last == ""
+      lines
+    end
+
+    def selected_buffer_text(column, row, length)
+      lines = visible_text_lines
+      current_row = [[row, 0].max, lines.length].min
+      current_col = [column, 0].max
+      remaining = length
+      result = +""
+      first_line = true
+
+      while remaining.positive? && current_row < lines.length
+        line = lines[current_row]
+        result << "\r\n" unless first_line
+        first_line = false
+
+        available = [line.length - current_col, 0].max
+        take = [available, remaining].min
+        result << (line[current_col, take] || "")
+        remaining -= take
+        current_row += 1
+        current_col = 0
+      end
+
+      result
     end
   end
 

@@ -1,6 +1,9 @@
 # frozen_string_literal: true
 
 require_relative "rterm/version"
+require_relative "rterm/terminal_options"
+require_relative "rterm/theme"
+require_relative "rterm/service_container"
 require_relative "rterm/common/types"
 require_relative "rterm/common/event_emitter"
 require_relative "rterm/common/buffer/constants"
@@ -15,6 +18,7 @@ require_relative "rterm/common/parser/escape_sequence_parser"
 require_relative "rterm/common/unicode/unicode_handler"
 require_relative "rterm/common/input/input_handler"
 require_relative "rterm/common/core_terminal"
+require_relative "rterm/headless/services/headless_service_container"
 require_relative "rterm/headless/headless_terminal"
 require_relative "rterm/pty/pty"
 require_relative "rterm/terminal"

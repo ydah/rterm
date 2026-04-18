@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require_relative "event_emitter"
+require_relative "../terminal_options"
+require_relative "../service_container"
 require_relative "buffer/buffer_set"
 require_relative "parser/escape_sequence_parser"
 require_relative "input/input_handler"
@@ -14,21 +16,25 @@ module RTerm
     class CoreTerminal
       include EventEmitter
 
-      attr_reader :cols, :rows, :buffer_set, :parser, :input_handler, :unicode_handler
+      attr_reader :cols, :rows, :buffer_set, :parser, :input_handler,
+                  :unicode_handler, :options, :services
 
       # @param options [Hash] terminal options
       # @option options [Integer] :cols (80) number of columns
       # @option options [Integer] :rows (24) number of rows
       # @option options [Integer] :scrollback (1000) scrollback buffer size
       def initialize(options = {})
-        @cols = options.fetch(:cols, 80)
-        @rows = options.fetch(:rows, 24)
-        @scrollback = options.fetch(:scrollback, 1000)
+        @options = options.is_a?(RTerm::TerminalOptions) ? options : RTerm::TerminalOptions.new(options)
+        @cols = @options.cols
+        @rows = @options.rows
+        @scrollback = @options.scrollback
 
         @unicode_handler = UnicodeHandler.new
         @buffer_set = BufferSet.new(@cols, @rows, @scrollback)
         @parser = EscapeSequenceParser.new
-        @input_handler = InputHandler.new(@buffer_set, @parser, @unicode_handler, options)
+        @services = ServiceContainer.new
+        register_services
+        @input_handler = InputHandler.new(@buffer_set, @parser, @unicode_handler, @options.to_h)
 
         wire_events
       end
@@ -55,6 +61,8 @@ module RTerm
 
         @cols = cols
         @rows = rows
+        @options = @options.merge(cols: cols, rows: rows)
+        @services.register(Services::OPTIONS_SERVICE, @options)
         @buffer_set.normal.resize(cols, rows)
         @buffer_set.alt.resize(cols, rows)
         emit(:resize, { cols: cols, rows: rows })
@@ -71,6 +79,13 @@ module RTerm
       end
 
       private
+
+      def register_services
+        @services.register(Services::BUFFER_SERVICE, @buffer_set)
+        @services.register(Services::OPTIONS_SERVICE, @options)
+        @services.register(Services::UNICODE_SERVICE, @unicode_handler)
+        @services.register(Services::CORE_SERVICE, self)
+      end
 
       def wire_events
         # Forward input handler events
