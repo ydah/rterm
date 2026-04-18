@@ -32,13 +32,17 @@ module RTerm
       #   :exclude_alt_buffer [Boolean] exclude alt buffer
       # @return [String] serialized terminal state
       def serialize(options = {})
-        buffer = @terminal.internal.buffer_set.active
+        buffer_set = @terminal.internal.buffer_set
+        buffer = options[:exclude_alt_buffer] ? buffer_set.normal : buffer_set.active
         result = +""
         prev_fg = 0
         prev_bg = 0
+        indexes = line_indexes(buffer, options.fetch(:scrollback, 0))
 
-        buffer.rows.times do |y|
-          line = buffer.get_line(y)
+        result << serialize_modes unless options[:exclude_modes]
+
+        indexes.each_with_index do |line_index, index|
+          line = buffer.lines[line_index]
           next unless line
 
           line.length.times do |x|
@@ -60,7 +64,7 @@ module RTerm
             end
           end
 
-          result << "\r\n" if y < buffer.rows - 1
+          result << "\r\n" if index < indexes.length - 1
         end
 
         # Append cursor position
@@ -75,11 +79,13 @@ module RTerm
       # @param options [Hash]
       # @return [String] HTML representation
       def serialize_as_html(options = {})
-        buffer = @terminal.internal.buffer_set.active
+        buffer_set = @terminal.internal.buffer_set
+        buffer = options[:exclude_alt_buffer] ? buffer_set.normal : buffer_set.active
         result = +"<pre>"
 
-        buffer.rows.times do |y|
-          line = buffer.get_line(y)
+        indexes = line_indexes(buffer, options.fetch(:scrollback, 0))
+        indexes.each_with_index do |line_index, index|
+          line = buffer.lines[line_index]
           next unless line
 
           spans = group_cells_by_attrs(line)
@@ -92,7 +98,7 @@ module RTerm
             end
           end
 
-          result << "\n" if y < buffer.rows - 1
+          result << "\n" if index < indexes.length - 1
         end
 
         result << "</pre>"
@@ -100,6 +106,24 @@ module RTerm
       end
 
       private
+
+      def line_indexes(buffer, scrollback)
+        scrollback = [scrollback.to_i, 0].max
+        start = [buffer.y_base - scrollback, 0].max
+        finish = [buffer.y_base + buffer.rows - 1, buffer.lines.length - 1].min
+        (start..finish).to_a
+      end
+
+      def serialize_modes
+        modes = @terminal.modes
+        result = +""
+        result << "\e[?7l" unless modes[:wraparound_mode]
+        result << "\e[4h" if modes[:insert_mode]
+        result << "\e[?6h" if modes[:origin_mode]
+        result << "\e[?25l" if modes[:cursor_hidden]
+        result << "\e[?2004h" if modes[:bracketed_paste_mode]
+        result
+      end
 
       def build_sgr(cell)
         params = []
