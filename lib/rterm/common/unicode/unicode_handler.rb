@@ -268,12 +268,57 @@ module RTerm
         [0x2600, 0x27BF]
       ].freeze
 
+      EMOJI_VARIATION_BASE_RANGES = [
+        [0x00A9, 0x00A9],
+        [0x00AE, 0x00AE],
+        [0x203C, 0x203C],
+        [0x2049, 0x2049],
+        [0x2122, 0x2122],
+        [0x2139, 0x2139],
+        [0x2194, 0x21AA],
+        [0x231A, 0x231B],
+        [0x2328, 0x2328],
+        [0x23CF, 0x23CF],
+        [0x23E9, 0x23F3],
+        [0x23F8, 0x23FA],
+        [0x24C2, 0x24C2],
+        [0x25AA, 0x25AB],
+        [0x25B6, 0x25B6],
+        [0x25C0, 0x25C0],
+        [0x25FB, 0x25FE],
+        [0x2600, 0x27BF],
+        [0x2934, 0x2935],
+        [0x2B05, 0x2B55],
+        [0x3030, 0x3030],
+        [0x303D, 0x303D],
+        [0x3297, 0x3297],
+        [0x3299, 0x3299]
+      ].freeze
+
+      VERSION_EMOJI_RANGES = {
+        "6" => [
+          [0x2600, 0x27BF],
+          [0x1F000, 0x1F64F],
+          [0x1F680, 0x1F6FF]
+        ],
+        "11" => [
+          [0x2600, 0x27BF],
+          [0x1F000, 0x1F6FF],
+          [0x1F900, 0x1F9FF],
+          [0x1FA00, 0x1FA6F]
+        ],
+        "15" => [
+          [0x2600, 0x27BF],
+          [0x1F000, 0x1FAFF]
+        ]
+      }.freeze
+
       def initialize
         @providers = {
           DEFAULT_VERSION => method(:builtin_char_width),
-          "6" => method(:builtin_char_width),
-          "11" => method(:builtin_char_width),
-          "15" => method(:builtin_char_width)
+          "6" => ->(codepoint) { versioned_char_width(codepoint, "6") },
+          "11" => ->(codepoint) { versioned_char_width(codepoint, "11") },
+          "15" => ->(codepoint) { versioned_char_width(codepoint, "15") }
         }
         @active_version = DEFAULT_VERSION
       end
@@ -301,9 +346,11 @@ module RTerm
       end
 
       # Returns the display width of a character (0, 1, or 2)
-      # @param codepoint [Integer] Unicode codepoint
+      # @param codepoint [Integer, String] Unicode codepoint or grapheme cluster
       # @return [Integer] 0, 1, or 2
       def char_width(codepoint)
+        return grapheme_width(codepoint) if codepoint.is_a?(String)
+
         provider = @providers.fetch(@active_version)
         return provider.char_width(codepoint) if provider.respond_to?(:char_width)
         return provider.call(codepoint) if provider.respond_to?(:call)
@@ -335,14 +382,53 @@ module RTerm
         str.to_s.scan(/\X/)
       end
 
+      # @param str [String]
+      # @return [Integer]
+      def string_width(str)
+        grapheme_clusters(str).sum { |cluster| grapheme_width(cluster) }
+      end
+
       private
 
+      def grapheme_width(cluster)
+        codepoints = cluster.codepoints
+        return 0 if codepoints.empty?
+
+        base = codepoints.first
+        return 2 if emoji_variation_sequence?(codepoints)
+        return 2 if emoji_zwj_sequence?(codepoints)
+
+        char_width(base)
+      end
+
+      def emoji_variation_sequence?(codepoints)
+        codepoints.include?(0xFE0F) && in_ranges?(codepoints.first, EMOJI_VARIATION_BASE_RANGES)
+      end
+
+      def emoji_zwj_sequence?(codepoints)
+        codepoints.include?(0x200D) && codepoints.any? { |codepoint| is_emoji(codepoint) }
+      end
+
       def builtin_char_width(codepoint)
+        return versioned_emoji_width(codepoint, "15") if in_ranges?(codepoint, EMOJI_RANGES)
         return 0 if control?(codepoint)
         return 0 if in_ranges?(codepoint, ZERO_WIDTH_RANGES)
         return 2 if in_ranges?(codepoint, WIDE_RANGES)
 
         1
+      end
+
+      def versioned_char_width(codepoint, version)
+        return 0 if control?(codepoint)
+        return 0 if in_ranges?(codepoint, ZERO_WIDTH_RANGES)
+        return versioned_emoji_width(codepoint, version) if in_ranges?(codepoint, EMOJI_RANGES)
+        return 2 if in_ranges?(codepoint, WIDE_RANGES)
+
+        1
+      end
+
+      def versioned_emoji_width(codepoint, version)
+        in_ranges?(codepoint, VERSION_EMOJI_RANGES.fetch(version)) ? 2 : 1
       end
 
       def control?(codepoint)
