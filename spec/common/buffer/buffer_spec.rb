@@ -104,6 +104,51 @@ RSpec.describe RTerm::Common::Buffer do
       buffer.resize(80, 12)
       expect(buffer.rows).to eq(12)
     end
+
+    it "reflows wrapped lines when columns shrink" do
+      small = described_class.new(10, 4, 10)
+      "abcdefghij".each_char.with_index do |ch, i|
+        cell = RTerm::Common::CellData.new
+        cell.char = ch
+        small.get_line(0).set_cell(i, cell)
+      end
+      "klmno".each_char.with_index do |ch, i|
+        cell = RTerm::Common::CellData.new
+        cell.char = ch
+        small.get_line(1).set_cell(i, cell)
+      end
+      small.get_line(0).is_wrapped = true
+
+      small.resize(5, 4)
+
+      expect(small.get_line(0).to_string).to eq("abcde")
+      expect(small.get_line(0).is_wrapped).to be true
+      expect(small.get_line(1).to_string).to eq("fghij")
+      expect(small.get_line(1).is_wrapped).to be true
+      expect(small.get_line(2).to_string).to eq("klmno")
+      expect(small.get_line(2).is_wrapped).to be false
+    end
+
+    it "reflows wrapped lines when columns expand" do
+      small = described_class.new(5, 4, 10)
+      "abcde".each_char.with_index do |ch, i|
+        cell = RTerm::Common::CellData.new
+        cell.char = ch
+        small.get_line(0).set_cell(i, cell)
+      end
+      "fghij".each_char.with_index do |ch, i|
+        cell = RTerm::Common::CellData.new
+        cell.char = ch
+        small.get_line(1).set_cell(i, cell)
+      end
+      small.get_line(0).is_wrapped = true
+
+      small.resize(10, 4)
+
+      expect(small.get_line(0).to_string).to eq("abcdefghij")
+      expect(small.get_line(0).is_wrapped).to be false
+      expect(small.get_line(1).to_string).to eq("")
+    end
   end
 
   describe "#save_cursor / #restore_cursor" do
