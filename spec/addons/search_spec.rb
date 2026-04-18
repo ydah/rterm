@@ -45,6 +45,17 @@ RSpec.describe RTerm::Addon::Search do
       matches = search.find_all("xyz")
       expect(matches).to be_empty
     end
+
+    it "finds matches across wrapped rows" do
+      wrapped_terminal = RTerm::Terminal.new(cols: 5, rows: 4)
+      wrapped_search = described_class.new
+      wrapped_terminal.load_addon(wrapped_search)
+
+      wrapped_terminal.write("helloworld")
+      matches = wrapped_search.find_all("lowo")
+
+      expect(matches).to eq([{ row: 0, col: 3, length: 4 }])
+    end
   end
 
   describe "#find_next" do

@@ -43,6 +43,9 @@ module RTerm
     # Simulates user input (sends data event for PTY forwarding).
     # @param data [String] the input data
     def input(data)
+      return if options.disable_stdin
+
+      scroll_to_bottom if options.scroll_on_user_input
       @terminal.emit(:data, data)
     end
 

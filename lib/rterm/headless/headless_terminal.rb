@@ -32,11 +32,8 @@ module RTerm
       # Scrolls the viewport by the given number of lines.
       # @param amount [Integer] positive = down, negative = up
       def scroll_lines(amount)
-        if amount > 0
-          amount.times { buffer.scroll_up }
-        elsif amount < 0
-          (-amount).times { buffer.scroll_down }
-        end
+        max_disp = buffer.y_base
+        buffer.y_disp = [[buffer.y_disp + amount, 0].max, max_disp].min
         emit(:scroll)
       end
 

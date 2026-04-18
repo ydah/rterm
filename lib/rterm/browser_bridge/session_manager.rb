@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'securerandom'
+require_relative "../pty/pty"
 
 module RTerm
   module BrowserBridge
@@ -10,9 +11,13 @@ module RTerm
       attr_reader :max_sessions
 
       # @param max_sessions [Integer] maximum number of concurrent sessions
-      def initialize(max_sessions: 10)
+      def initialize(max_sessions: 10, default_command: nil, terminal_options: {})
         @sessions = {}
         @max_sessions = max_sessions
+        @default_command = default_command
+        @terminal_options = terminal_options
+        @output_callbacks = []
+        @exit_callbacks = []
       end
 
       # Creates a new terminal session.
@@ -28,12 +33,16 @@ module RTerm
         raise SessionError, "Maximum sessions (#{@max_sessions}) reached" if @sessions.size >= @max_sessions
 
         session_id = SecureRandom.uuid
-        cols = options.fetch(:cols, 80)
-        rows = options.fetch(:rows, 24)
+        session_options = @terminal_options.merge(options)
+        cols = session_options.fetch(:cols, 80)
+        rows = session_options.fetch(:rows, 24)
 
         terminal = RTerm::Terminal.new(cols: cols, rows: rows)
+        pty = create_pty(session_options, cols, rows)
+        wire_pty(session_id, terminal, pty) if pty
         @sessions[session_id] = {
           terminal: terminal,
+          pty: pty,
           created_at: Time.now
         }
 
@@ -47,6 +56,7 @@ module RTerm
         session = @sessions.delete(session_id)
         raise SessionError, "Session not found: #{session_id}" unless session
 
+        session[:pty]&.close
         session[:terminal].dispose
       end
 
@@ -65,7 +75,12 @@ module RTerm
       # @param session_id [String]
       # @param data [String]
       def write(session_id, data)
-        get_terminal(session_id).write(data)
+        session = get_session(session_id)
+        if session[:pty]
+          session[:terminal].input(data)
+        else
+          session[:terminal].write(data)
+        end
       end
 
       # Resizes a session's terminal.
@@ -73,7 +88,21 @@ module RTerm
       # @param cols [Integer]
       # @param rows [Integer]
       def resize(session_id, cols, rows)
-        get_terminal(session_id).resize(cols, rows)
+        session = get_session(session_id)
+        session[:terminal].resize(cols, rows)
+        session[:pty]&.resize(cols, rows)
+      end
+
+      # Registers a callback for PTY output.
+      # @yield [session_id, data]
+      def on_output(&block)
+        @output_callbacks << block
+      end
+
+      # Registers a callback for PTY exit.
+      # @yield [session_id, code]
+      def on_exit(&block)
+        @exit_callbacks << block
       end
 
       # Processes an incoming protocol message.
@@ -133,6 +162,39 @@ module RTerm
       # @return [Array<String>]
       def session_ids
         @sessions.keys
+      end
+
+      private
+
+      def get_session(session_id)
+        session = @sessions[session_id]
+        raise SessionError, "Session not found: #{session_id}" unless session
+
+        session
+      end
+
+      def create_pty(options, cols, rows)
+        command = options.key?(:command) ? options[:command] : @default_command
+        return nil if command.nil? || command.empty?
+
+        RTerm::Pty.new(
+          command: command,
+          args: options.fetch(:args, []),
+          env: options.fetch(:env, {}),
+          cols: cols,
+          rows: rows
+        )
+      end
+
+      def wire_pty(session_id, terminal, pty)
+        terminal.on(:data) { |data| pty.write(data) }
+        pty.on_data do |data|
+          terminal.write(data)
+          @output_callbacks.each { |callback| callback.call(session_id, data) }
+        end
+        pty.on_exit do |code|
+          @exit_callbacks.each { |callback| callback.call(session_id, code) }
+        end
       end
     end
 

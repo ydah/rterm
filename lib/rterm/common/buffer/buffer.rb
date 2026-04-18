@@ -47,7 +47,7 @@ module RTerm
       def scroll_up(count = 1)
         count.times do
           @lines.push(new_blank_line)
-          @y_base += 1
+          @y_base = [@y_base + 1, max_y_base].min
           @y_disp = @y_base
         end
       end
@@ -94,6 +94,8 @@ module RTerm
         @rows = new_rows
         @scroll_bottom = new_rows - 1 if @scroll_bottom >= new_rows
         @lines.max_length = new_rows + @scrollback
+        @y_base = [@y_base, max_y_base].min
+        @y_disp = [@y_disp, @y_base].min
         @x = [@x, new_cols - 1].min
         @y = [@y, new_rows - 1].min
       end
@@ -114,9 +116,8 @@ module RTerm
 
       # Clears all lines in the buffer.
       def clear
-        @lines.length.times do |i|
-          @lines[i] = new_blank_line
-        end
+        @lines.clear
+        fill_viewport
         @y_base = 0
         @y_disp = 0
         @x = 0
@@ -140,6 +141,10 @@ module RTerm
 
       def setup_tab_stops
         @cols.times { |i| @tabs[i] = true if i > 0 && (i % 8) == 0 }
+      end
+
+      def max_y_base
+        [@lines.length - @rows, 0].max
       end
     end
   end

@@ -3,6 +3,8 @@
 require_relative "../event_emitter"
 require_relative "../buffer/constants"
 require_relative "../buffer/cell_data"
+require_relative "../charset/charsets"
+require_relative "../color/color_manager"
 
 module RTerm
   module Common
@@ -11,7 +13,8 @@ module RTerm
       include BufferConstants
 
       attr_reader :autowrap, :cursor_hidden, :bracketed_paste_mode, :insert_mode,
-                  :origin_mode, :application_cursor_keys_mode, :application_keypad_mode
+                  :origin_mode, :application_cursor_keys_mode, :application_keypad_mode,
+                  :color_manager
 
       def initialize(buffer_set, parser, unicode_handler = nil, options = {})
         if unicode_handler.is_a?(Hash)
@@ -30,6 +33,14 @@ module RTerm
         @origin_mode = false
         @application_cursor_keys_mode = false
         @application_keypad_mode = false
+        @focus_event_mode = false
+        @mouse_tracking_mode = nil
+        @sgr_mouse_mode = false
+        @utf8_mouse_mode = false
+        @urxvt_mouse_mode = false
+        @color_manager = ColorManager.new(options[:theme] || RTerm::Theme.new)
+        @charset_g = 0
+        @charsets = [Charsets.fetch(:ascii), Charsets.fetch(:ascii)]
         @last_printed_char = nil
         @erase_cell = CellData.new
         @print_cell = CellData.new
@@ -43,8 +54,14 @@ module RTerm
           application_cursor_keys_mode: @application_cursor_keys_mode,
           application_keypad_mode: @application_keypad_mode,
           bracketed_paste_mode: @bracketed_paste_mode,
+          cursor_hidden: @cursor_hidden,
+          focus_event_mode: @focus_event_mode,
           insert_mode: @insert_mode,
+          mouse_tracking_mode: @mouse_tracking_mode,
           origin_mode: @origin_mode,
+          sgr_mouse_mode: @sgr_mouse_mode,
+          urxvt_mouse_mode: @urxvt_mouse_mode,
+          utf8_mouse_mode: @utf8_mouse_mode,
           wraparound_mode: @autowrap
         }
       end
@@ -87,7 +104,8 @@ module RTerm
 
       def print_chars(data)
         buf = buffer
-        data.each_char do |ch|
+        data.each_char do |raw_ch|
+          ch = translate_char(raw_ch)
           width = char_width(ch)
 
           if buf.x >= buf.cols
@@ -396,10 +414,12 @@ module RTerm
           full_reset
         end
 
-        # Charset designation
-        %w[B 0].each do |ch|
-          @parser.set_esc_handler({ intermediates: "(", final: ch }) do
-            # charset designation — placeholder
+        # Charset designation for G0/G1.
+        { "(" => 0, ")" => 1 }.each do |intermediate, slot|
+          %w[B 0].each do |ch|
+            @parser.set_esc_handler({ intermediates: intermediate, final: ch }) do
+              set_charset(slot, ch)
+            end
           end
         end
       end
@@ -413,6 +433,48 @@ module RTerm
 
         @parser.set_osc_handler(2) do |data|
           emit(:title_change, data)
+        end
+
+        @parser.set_osc_handler(4) do |data|
+          handle_palette_osc(data)
+        end
+
+        @parser.set_osc_handler(8) do |data|
+          params, uri = data.split(";", 2)
+          emit(:hyperlink, { params: params || "", uri: uri || "" })
+        end
+
+        @parser.set_osc_handler(10) do |data|
+          @color_manager.foreground = data
+        end
+
+        @parser.set_osc_handler(11) do |data|
+          @color_manager.background = data
+        end
+
+        @parser.set_osc_handler(12) do |data|
+          @color_manager.cursor = data
+        end
+
+        @parser.set_osc_handler(52) do |data|
+          selection, encoded = data.split(";", 2)
+          emit(:clipboard, { selection: selection || "", data: encoded || "" })
+        end
+
+        @parser.set_osc_handler(104) do |data|
+          handle_palette_reset_osc(data)
+        end
+
+        @parser.set_osc_handler(110) do
+          @color_manager.foreground = @color_manager.theme.foreground
+        end
+
+        @parser.set_osc_handler(111) do
+          @color_manager.background = @color_manager.theme.background
+        end
+
+        @parser.set_osc_handler(112) do
+          @color_manager.cursor = @color_manager.theme.cursor
         end
       end
 
@@ -454,6 +516,11 @@ module RTerm
 
       def scroll_up(count)
         buf = buffer
+        if buf.scroll_top.zero? && buf.scroll_bottom == buf.rows - 1
+          buf.scroll_up(count)
+          return
+        end
+
         count.times do
           top = buf.scroll_top + buf.y_base
           bottom = buf.scroll_bottom + buf.y_base
@@ -687,6 +754,24 @@ module RTerm
           @autowrap = true
         when 25
           @cursor_hidden = false
+        when 66
+          @application_keypad_mode = true
+        when 9
+          @mouse_tracking_mode = :x10
+        when 1000
+          @mouse_tracking_mode = :x10
+        when 1002
+          @mouse_tracking_mode = :button
+        when 1003
+          @mouse_tracking_mode = :any
+        when 1004
+          @focus_event_mode = true
+        when 1005
+          @utf8_mouse_mode = true
+        when 1006
+          @sgr_mouse_mode = true
+        when 1015
+          @urxvt_mouse_mode = true
         when 47, 1047
           @buffer_set.activate_alt_buffer(clear: true)
         when 1048
@@ -710,6 +795,18 @@ module RTerm
           @autowrap = false
         when 25
           @cursor_hidden = true
+        when 66
+          @application_keypad_mode = false
+        when 9, 1000, 1002, 1003
+          @mouse_tracking_mode = nil
+        when 1004
+          @focus_event_mode = false
+        when 1005
+          @utf8_mouse_mode = false
+        when 1006
+          @sgr_mouse_mode = false
+        when 1015
+          @urxvt_mouse_mode = false
         when 47, 1047
           @buffer_set.activate_normal_buffer
         when 1048
@@ -738,6 +835,15 @@ module RTerm
         @origin_mode = false
         @application_cursor_keys_mode = false
         @application_keypad_mode = false
+        @focus_event_mode = false
+        @mouse_tracking_mode = nil
+        @sgr_mouse_mode = false
+        @utf8_mouse_mode = false
+        @urxvt_mouse_mode = false
+        @color_manager.reset_defaults
+        @color_manager.reset_ansi_color
+        @charset_g = 0
+        @charsets = [Charsets.fetch(:ascii), Charsets.fetch(:ascii)]
         @last_printed_char = nil
         buf.rows.times do |y|
           buf.get_line(y)&.replace_cells(0, buf.cols, CellData.new)
@@ -748,6 +854,32 @@ module RTerm
 
       def char_width(ch)
         @unicode_handler.char_width(ch.ord)
+      end
+
+      def translate_char(ch)
+        @charsets.fetch(@charset_g, Charsets.fetch(:ascii)).translate(ch)
+      end
+
+      def set_charset(slot, charset)
+        @charsets[slot] = Charsets.fetch(charset)
+      end
+
+      def handle_palette_osc(data)
+        parts = data.split(";")
+        parts.each_slice(2) do |index, color|
+          next if index.nil? || color.nil?
+
+          @color_manager.set_ansi_color(index.to_i, color)
+        end
+      end
+
+      def handle_palette_reset_osc(data)
+        indexes = data.to_s.split(";").reject(&:empty?)
+        if indexes.empty?
+          @color_manager.reset_ansi_color
+        else
+          indexes.each { |index| @color_manager.reset_ansi_color(index.to_i) }
+        end
       end
 
       def save_cursor_state(target_buffer = buffer)

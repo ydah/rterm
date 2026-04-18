@@ -54,6 +54,16 @@ RSpec.describe RTerm::Common::Buffer do
       # y_base should have increased
       expect(buffer.y_base).to eq(1)
     end
+
+    it "keeps y_base bounded by scrollback capacity" do
+      small = described_class.new(5, 2, 3)
+
+      10.times { small.scroll_up(1) }
+
+      expect(small.y_base).to eq(3)
+      expect(small.get_line(0)).to be_a(RTerm::Common::BufferLine)
+      expect(small.get_line(1)).to be_a(RTerm::Common::BufferLine)
+    end
   end
 
   describe "#scroll_down" do
