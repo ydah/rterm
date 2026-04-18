@@ -115,27 +115,64 @@ module RTerm
     # @param length [Integer] number of characters to select
     def select(column, row, length)
       @selection = {
+        type: :linear,
         column: [column.to_i, 0].max,
         row: [row.to_i, 0].max,
         length: [length.to_i, 0].max
       }
     end
 
-    # Selects all visible text in the active buffer.
-    def select_all
-      lines = visible_text_lines
+    # Selects the word at the given visible buffer position.
+    # @param column [Integer] cell column
+    # @param row [Integer] visible row
+    def select_word(column, row)
       @selection = {
-        column: 0,
-        row: 0,
-        length: lines.sum(&:length)
+        type: :word,
+        column: [column.to_i, 0].max,
+        row: [row.to_i, 0].max
+      }
+    end
+
+    # Selects a rectangular cell range in the visible buffer.
+    # @param start_column [Integer] starting column
+    # @param start_row [Integer] starting row
+    # @param end_column [Integer] ending column, inclusive
+    # @param end_row [Integer] ending row, inclusive
+    def select_rectangle(start_column, start_row, end_column, end_row)
+      @selection = {
+        type: :rectangle,
+        start_column: [start_column.to_i, 0].max,
+        start_row: [start_row.to_i, 0].max,
+        end_column: [end_column.to_i, 0].max,
+        end_row: [end_row.to_i, 0].max
+      }
+    end
+
+    # Selects all retained text in the active buffer, including scrollback.
+    def select_all
+      @selection = {
+        type: :all
       }
     end
 
     # @return [String] selected text
     def selection
-      return "" unless @selection && @selection[:length].positive?
+      return "" unless @selection
 
-      selected_buffer_text(@selection[:column], @selection[:row], @selection[:length])
+      case @selection[:type]
+      when :linear
+        return "" unless @selection[:length].positive?
+
+        selected_buffer_text(@selection[:column], @selection[:row], @selection[:length])
+      when :word
+        selected_word_text(@selection[:column], @selection[:row])
+      when :rectangle
+        selected_rectangle_text(@selection)
+      when :all
+        selected_all_text
+      else
+        ""
+      end
     end
 
     # Clears the current text selection.
@@ -193,41 +230,135 @@ module RTerm
 
     private
 
-    def visible_selection_text
-      visible_text_lines.join("\r\n")
+    def visible_rows
+      active = buffer.active
+      collect_rows(active.y_disp, active.rows)
     end
 
-    def visible_text_lines
+    def all_rows
+      collect_rows(0, buffer.active.lines.length)
+    end
+
+    def collect_rows(start_index, count)
       active = buffer.active
-      lines = active.rows.times.map do |row|
-        active.get_line(row)&.to_string || ""
+      last_index = [start_index + count, active.lines.length].min
+      rows = (start_index...last_index).filter_map do |index|
+        line = active.lines[index]
+        next unless line
+
+        { line: line, wrapped_to_next: line.is_wrapped }
       end
-      lines.pop while lines.last == ""
-      lines
+
+      rows.pop while rows.last && line_empty?(rows.last[:line])
+      rows
+    end
+
+    def line_empty?(line)
+      line.get_trimmed_length.zero?
+    end
+
+    def selected_all_text
+      join_row_text(all_rows)
     end
 
     def selected_buffer_text(column, row, length)
-      lines = visible_text_lines
-      current_row = [[row, 0].max, lines.length].min
+      rows = visible_rows
+      current_row = [[row, 0].max, rows.length].min
       current_col = [column, 0].max
       remaining = length
       result = +""
       first_line = true
+      previous_wrapped = false
 
-      while remaining.positive? && current_row < lines.length
-        line = lines[current_row]
-        result << "\r\n" unless first_line
+      while remaining.positive? && current_row < rows.length
+        row_info = rows[current_row]
+        line = row_info[:line]
+        result << "\r\n" unless first_line || previous_wrapped
         first_line = false
 
-        available = [line.length - current_col, 0].max
+        available = [line.get_trimmed_length - current_col, 0].max
         take = [available, remaining].min
-        result << (line[current_col, take] || "")
+        result << line_text(line, start_col: current_col, end_col: current_col + take)
         remaining -= take
+        previous_wrapped = row_info[:wrapped_to_next]
         current_row += 1
         current_col = 0
       end
 
       result
+    end
+
+    def selected_word_text(column, row)
+      row_info = visible_rows[[row, 0].max]
+      return "" unless row_info
+
+      segments = line_segments(row_info[:line])
+      target = segments.find_index { |segment| column >= segment[:start_col] && column < segment[:end_col] }
+      target ||= segments.length - 1 if segments.any? && column >= segments.last[:end_col]
+      return "" unless target
+
+      separators = options.word_separator.to_s.each_char.to_a
+      return "" if separators.include?(segments[target][:text])
+
+      first = target
+      first -= 1 while first.positive? && !separators.include?(segments[first - 1][:text])
+
+      last = target
+      last += 1 while last < segments.length - 1 && !separators.include?(segments[last + 1][:text])
+
+      segments[first..last].map { |segment| segment[:text] }.join
+    end
+
+    def selected_rectangle_text(selection)
+      rows = visible_rows
+      first_row, last_row = [selection[:start_row], selection[:end_row]].minmax
+      first_col, last_col = [selection[:start_column], selection[:end_column]].minmax
+
+      (first_row..last_row).map do |row_index|
+        row_info = rows[row_index]
+        row_info ? line_text(row_info[:line], start_col: first_col, end_col: last_col + 1, trim_right: false) : ""
+      end.join("\r\n")
+    end
+
+    def join_row_text(rows)
+      result = +""
+      rows.each_with_index do |row_info, index|
+        result << "\r\n" if index.positive? && !rows[index - 1][:wrapped_to_next]
+        result << line_text(row_info[:line])
+      end
+      result
+    end
+
+    def line_text(line, start_col: 0, end_col: nil, trim_right: true)
+      line_segments(line, start_col: start_col, end_col: end_col, trim_right: trim_right)
+        .map { |segment| segment[:text] }
+        .join
+    end
+
+    def line_segments(line, start_col: 0, end_col: nil, trim_right: true)
+      start_col = [start_col, 0].max
+      max_end = trim_right ? line.get_trimmed_length : line.length
+      end_col = end_col ? [end_col, max_end].min : max_end
+      return [] if end_col <= start_col
+
+      segments = []
+      column = 0
+      while column < end_col
+        cell = line.get_cell(column)
+        width = [(cell&.width || 1).to_i, 1].max
+        next_column = column + width
+
+        if cell && cell.width != 0 && next_column > start_col
+          segments << {
+            text: cell.has_content? ? cell.char : " ",
+            start_col: column,
+            end_col: next_column
+          }
+        end
+
+        column = next_column
+      end
+      segments
     end
   end
 
