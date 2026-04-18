@@ -10,13 +10,14 @@ module RTerm
     class CellData
       include BufferConstants
 
-      attr_accessor :content, :fg, :bg
+      attr_accessor :content, :fg, :bg, :link
       attr_reader :combined_data
 
       def initialize
         @content = Content::WIDTH_MASK & (1 << Content::WIDTH_SHIFT) # width=1
         @fg = 0
         @bg = 0
+        @link = nil
         @combined_data = nil
       end
 
@@ -281,6 +282,7 @@ module RTerm
         @content = 1 << Content::WIDTH_SHIFT # width=1
         @fg = 0
         @bg = 0
+        @link = nil
         @combined_data = nil
       end
 
@@ -290,6 +292,7 @@ module RTerm
         copy = CellData.new
         copy.fg = @fg
         copy.bg = @bg
+        copy.link = duplicate_link(@link)
         copy.instance_variable_set(:@combined_data, @combined_data&.dup)
         copy.content = @content
         copy
@@ -300,8 +303,15 @@ module RTerm
       def copy_from(other)
         @fg = other.fg
         @bg = other.bg
+        @link = duplicate_link(other.link)
         @combined_data = other.combined_data&.dup
         @content = other.content
+      end
+
+      private
+
+      def duplicate_link(value)
+        value&.dup
       end
     end
   end

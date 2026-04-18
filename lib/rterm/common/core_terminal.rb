@@ -104,6 +104,7 @@ module RTerm
         @input_handler.on(:data) { |data| emit(:data, data) }
         @input_handler.on(:hyperlink) { |payload| emit(:hyperlink, payload) }
         @input_handler.on(:clipboard) { |payload| emit(:clipboard, payload) }
+        @input_handler.on(:image) { |payload| emit(:image, payload) }
       end
     end
   end
