@@ -152,6 +152,12 @@ module RTerm
       @terminal.resize(cols, rows)
     end
 
+    # Encodes a mouse event according to the active DEC mouse mode.
+    # @return [String, nil]
+    def mouse_event(**options)
+      @terminal.input_handler.mouse_report(**options)
+    end
+
     # --- Events ---
 
     # Registers an event listener.

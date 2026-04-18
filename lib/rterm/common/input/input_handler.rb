@@ -67,6 +67,28 @@ module RTerm
         }
       end
 
+      # Encodes and emits a terminal mouse report for the active mouse mode.
+      # @param button [Symbol, Integer]
+      # @param col [Integer] zero-based column
+      # @param row [Integer] zero-based row
+      # @param event [Symbol] :press, :release, :motion
+      # @param modifiers [Array<Symbol>] :shift, :meta, :ctrl
+      # @return [String, nil]
+      def mouse_report(button:, col:, row:, event: :press, modifiers: [])
+        return nil unless @mouse_tracking_mode
+
+        code = mouse_button_code(button, event, modifiers)
+        report = if @sgr_mouse_mode
+                   sgr_mouse_report(code, col, row, event)
+                 elsif @urxvt_mouse_mode
+                   urxvt_mouse_report(code, col, row)
+                 else
+                   x10_mouse_report(code, col, row)
+                 end
+        emit(:data, report)
+        report
+      end
+
       private
 
       def buffer
@@ -997,6 +1019,44 @@ module RTerm
           previous_stop -= 1
         end
         0
+      end
+
+      def mouse_button_code(button, event, modifiers)
+        base = case button
+               when :left then 0
+               when :middle then 1
+               when :right then 2
+               when :release then 3
+               when :wheel_up then 64
+               when :wheel_down then 65
+               else button.to_i
+               end
+        base += 32 if event == :motion
+        base + mouse_modifier_code(modifiers)
+      end
+
+      def mouse_modifier_code(modifiers)
+        modifiers.sum do |modifier|
+          case modifier
+          when :shift then 4
+          when :meta, :alt then 8
+          when :ctrl, :control then 16
+          else 0
+          end
+        end
+      end
+
+      def sgr_mouse_report(code, col, row, event)
+        suffix = event == :release ? "m" : "M"
+        "\e[<#{code};#{col + 1};#{row + 1}#{suffix}"
+      end
+
+      def urxvt_mouse_report(code, col, row)
+        "\e[#{code + 32};#{col + 1};#{row + 1}M"
+      end
+
+      def x10_mouse_report(code, col, row)
+        "\e[M#{[code + 32, col + 33, row + 33].pack('U*')}"
       end
     end
   end
