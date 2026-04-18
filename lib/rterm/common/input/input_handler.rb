@@ -14,7 +14,7 @@ module RTerm
 
       attr_reader :autowrap, :cursor_hidden, :bracketed_paste_mode, :insert_mode,
                   :origin_mode, :application_cursor_keys_mode, :application_keypad_mode,
-                  :color_manager
+                  :color_manager, :cursor_style
 
       def initialize(buffer_set, parser, unicode_handler = nil, options = {})
         if unicode_handler.is_a?(Hash)
@@ -39,6 +39,8 @@ module RTerm
         @utf8_mouse_mode = false
         @urxvt_mouse_mode = false
         @color_manager = ColorManager.new(options[:theme] || RTerm::Theme.new)
+        @default_cursor_style = options[:cursor_style] || :block
+        @cursor_style = @default_cursor_style
         @current_link = nil
         @charset_g = 0
         @charsets = [Charsets.fetch(:ascii), Charsets.fetch(:ascii)]
@@ -340,6 +342,11 @@ module RTerm
         # TBC - Tab Clear
         @parser.set_csi_handler({ final: "g" }) do |params|
           clear_tab_stop(params[0])
+        end
+
+        # DECSCUSR - Set Cursor Style
+        @parser.set_csi_handler({ intermediates: " ", final: "q" }) do |params|
+          @cursor_style = cursor_style_from_param(params[0])
         end
 
         # CBT - Cursor Backward Tabulation
@@ -871,6 +878,7 @@ module RTerm
         @cur_attr = CellData.new
         @autowrap = true
         @cursor_hidden = false
+        @cursor_style = @default_cursor_style
         @bracketed_paste_mode = false
         @insert_mode = false
         @origin_mode = false
@@ -986,6 +994,18 @@ module RTerm
       def reset_cursor_to_home
         buffer.x = 0
         buffer.y = @origin_mode ? buffer.scroll_top : 0
+      end
+
+      def cursor_style_from_param(value)
+        case value.to_i
+        when 1 then :blinking_block
+        when 2 then :block
+        when 3 then :blinking_underline
+        when 4 then :underline
+        when 5 then :blinking_bar
+        when 6 then :bar
+        else :block
+        end
       end
 
       def set_tab_stop

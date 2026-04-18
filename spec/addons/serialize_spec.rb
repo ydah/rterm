@@ -62,6 +62,61 @@ RSpec.describe RTerm::Addon::Serialize do
       expect(serializer.serialize).to include("\e[?7l")
       expect(serializer.serialize(exclude_modes: true)).not_to include("\e[?7l")
     end
+
+    it "serializes cursor style" do
+      terminal.write("\e[6 q")
+
+      serialized = serializer.serialize
+      replayed = RTerm::Terminal.new(cols: 80, rows: 24)
+      replayed.write(serialized)
+
+      expect(serialized).to include("\e[6 q")
+      expect(replayed.internal.input_handler.cursor_style).to eq(:bar)
+    end
+
+    it "serializes dynamic colors and palette overrides" do
+      terminal.write("\e]10;#eeeeee\a")
+      terminal.write("\e]11;#111111\a")
+      terminal.write("\e]12;#00ff00\a")
+      terminal.write("\e]4;1;#ff1111\a")
+
+      serialized = serializer.serialize
+      replayed = RTerm::Terminal.new(cols: 80, rows: 24)
+      replayed.write(serialized)
+      colors = replayed.internal.input_handler.color_manager
+
+      expect(colors.foreground).to eq("#eeeeee")
+      expect(colors.background).to eq("#111111")
+      expect(colors.cursor).to eq("#00ff00")
+      expect(colors.palette[1]).to eq("#ff1111")
+    end
+
+    it "serializes OSC 8 link metadata" do
+      terminal.write("\e]8;id=1;https://example.com\aLink\e]8;;\a")
+
+      serialized = serializer.serialize
+      replayed = RTerm::Terminal.new(cols: 80, rows: 24)
+      replayed.write(serialized)
+      link = replayed.buffer.active.get_line(0).get_cell(0).link
+
+      expect(serialized).to include("\e]8;id=1;https://example.com\a")
+      expect(link).to eq({ params: "id=1", uri: "https://example.com" })
+    end
+
+    it "can serialize normal and alternate buffers together" do
+      terminal.write("normal")
+      terminal.write("\e[?1049h")
+      terminal.write("alt")
+      terminal.write("\e[?1049l")
+
+      serialized = serializer.serialize(include_alt_buffer: true)
+      replayed = RTerm::Terminal.new(cols: 80, rows: 24)
+      replayed.write(serialized)
+
+      expect(replayed.buffer.active).to eq(replayed.buffer.normal)
+      expect(replayed.buffer.normal.get_line(0).to_string).to include("normal")
+      expect(replayed.buffer.alt.get_line(0).to_string).to include("alt")
+    end
   end
 
   describe "#serialize_as_html" do
