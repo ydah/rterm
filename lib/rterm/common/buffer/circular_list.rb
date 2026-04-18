@@ -181,6 +181,11 @@ module RTerm
       def full?
         @length == @max_length
       end
+
+      # @return [Boolean] whether the list is at maximum capacity
+      def is_full?
+        full?
+      end
     end
   end
 end

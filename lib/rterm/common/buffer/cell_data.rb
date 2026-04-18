@@ -93,6 +93,8 @@ module RTerm
         (@fg & FgFlags::BOLD) != 0
       end
 
+      alias bold bold?
+
       def bold=(value)
         @fg = value ? (@fg | FgFlags::BOLD) : (@fg & ~FgFlags::BOLD)
       end
@@ -100,6 +102,8 @@ module RTerm
       def underline?
         (@fg & FgFlags::UNDERLINE) != 0
       end
+
+      alias underline underline?
 
       def underline=(value)
         @fg = value ? (@fg | FgFlags::UNDERLINE) : (@fg & ~FgFlags::UNDERLINE)
@@ -109,6 +113,8 @@ module RTerm
         (@fg & FgFlags::BLINK) != 0
       end
 
+      alias blink blink?
+
       def blink=(value)
         @fg = value ? (@fg | FgFlags::BLINK) : (@fg & ~FgFlags::BLINK)
       end
@@ -116,6 +122,8 @@ module RTerm
       def inverse?
         (@fg & FgFlags::INVERSE) != 0
       end
+
+      alias inverse inverse?
 
       def inverse=(value)
         @fg = value ? (@fg | FgFlags::INVERSE) : (@fg & ~FgFlags::INVERSE)
@@ -125,6 +133,8 @@ module RTerm
         (@fg & FgFlags::INVISIBLE) != 0
       end
 
+      alias invisible invisible?
+
       def invisible=(value)
         @fg = value ? (@fg | FgFlags::INVISIBLE) : (@fg & ~FgFlags::INVISIBLE)
       end
@@ -132,6 +142,8 @@ module RTerm
       def strikethrough?
         (@fg & FgFlags::STRIKETHROUGH) != 0
       end
+
+      alias strikethrough strikethrough?
 
       def strikethrough=(value)
         @fg = value ? (@fg | FgFlags::STRIKETHROUGH) : (@fg & ~FgFlags::STRIKETHROUGH)
@@ -142,6 +154,8 @@ module RTerm
         (@bg & BgFlags::ITALIC) != 0
       end
 
+      alias italic italic?
+
       def italic=(value)
         @bg = value ? (@bg | BgFlags::ITALIC) : (@bg & ~BgFlags::ITALIC)
       end
@@ -151,6 +165,8 @@ module RTerm
         (@bg & BgFlags::DIM) != 0
       end
 
+      alias dim dim?
+
       def dim=(value)
         @bg = value ? (@bg | BgFlags::DIM) : (@bg & ~BgFlags::DIM)
       end
@@ -159,6 +175,8 @@ module RTerm
       def overline?
         (@bg & BgFlags::OVERLINE) != 0
       end
+
+      alias overline overline?
 
       def overline=(value)
         @bg = value ? (@bg | BgFlags::OVERLINE) : (@bg & ~BgFlags::OVERLINE)
