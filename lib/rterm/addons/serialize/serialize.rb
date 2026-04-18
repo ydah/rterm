@@ -2,6 +2,7 @@
 
 require 'cgi'
 require_relative "../base"
+require_relative "../../common/color/color_palette"
 
 module RTerm
   module Addon
@@ -30,47 +31,48 @@ module RTerm
       #   :scrollback [Integer] number of scrollback lines to include (default: 0)
       #   :exclude_modes [Boolean] exclude mode information
       #   :exclude_alt_buffer [Boolean] exclude alt buffer
+      #   :include_alt_buffer [Boolean] serialize normal and alternate buffers
+      #   :exclude_colors [Boolean] exclude OSC dynamic color state
+      #   :exclude_cursor_style [Boolean] exclude DECSCUSR cursor style state
       # @return [String] serialized terminal state
       def serialize(options = {})
         buffer_set = @terminal.internal.buffer_set
+        result = +""
+        result << serialize_modes unless options[:exclude_modes]
+        result << serialize_dynamic_colors unless options[:exclude_colors]
+        result << serialize_cursor_style unless options[:exclude_cursor_style]
+
+        if options[:include_alt_buffer] && !options[:exclude_alt_buffer]
+          result << serialize_buffer(buffer_set.normal, options.fetch(:scrollback, 0))
+          result << "\e[?1049h"
+          result << serialize_buffer(buffer_set.alt, 0)
+          result << "\e[?1049l" unless buffer_set.active.equal?(buffer_set.alt)
+          return result
+        end
+
         buffer = options[:exclude_alt_buffer] ? buffer_set.normal : buffer_set.active
+        result << serialize_buffer(buffer, options.fetch(:scrollback, 0))
+        result
+      end
+
+      def serialize_buffer(buffer, scrollback)
         result = +""
         prev_fg = 0
         prev_bg = 0
-        indexes = line_indexes(buffer, options.fetch(:scrollback, 0))
-
-        result << serialize_modes unless options[:exclude_modes]
+        prev_link = nil
+        indexes = line_indexes(buffer, scrollback)
 
         indexes.each_with_index do |line_index, index|
           line = buffer.lines[line_index]
           next unless line
 
-          line.length.times do |x|
-            cell = line.get_cell(x)
-            next unless cell
-            next if cell.width == 0
-
-            if cell.fg != prev_fg || cell.bg != prev_bg
-              sgr = build_sgr(cell)
-              result << sgr unless sgr.empty?
-              prev_fg = cell.fg
-              prev_bg = cell.bg
-            end
-
-            if cell.has_content?
-              result << cell.char
-            else
-              result << " "
-            end
-          end
-
+          prev_fg, prev_bg, prev_link = serialize_line(line, result, prev_fg, prev_bg, prev_link)
           result << "\r\n" if index < indexes.length - 1
         end
 
-        # Append cursor position
-        cursor_y = buffer.y
-        cursor_x = buffer.x
-        result << "\e[#{cursor_y + 1};#{cursor_x + 1}H"
+        result << close_link_sequence if prev_link
+        result << "\e[0m" if prev_fg != 0 || prev_bg != 0
+        result << cursor_position(buffer)
 
         result
       end
@@ -107,6 +109,32 @@ module RTerm
 
       private
 
+      def serialize_line(line, result, prev_fg, prev_bg, prev_link)
+        line.length.times do |x|
+          cell = line.get_cell(x)
+          next unless cell
+          next if cell.width == 0
+
+          link = normalized_link(cell.link)
+          unless link == prev_link
+            result << close_link_sequence if prev_link
+            result << open_link_sequence(link) if link
+            prev_link = link
+          end
+
+          if cell.fg != prev_fg || cell.bg != prev_bg
+            sgr = build_sgr(cell)
+            result << sgr unless sgr.empty?
+            prev_fg = cell.fg
+            prev_bg = cell.bg
+          end
+
+          result << (cell.has_content? ? cell.char : " ")
+        end
+
+        [prev_fg, prev_bg, prev_link]
+      end
+
       def line_indexes(buffer, scrollback)
         scrollback = [scrollback.to_i, 0].max
         start = [buffer.y_base - scrollback, 0].max
@@ -123,6 +151,60 @@ module RTerm
         result << "\e[?25l" if modes[:cursor_hidden]
         result << "\e[?2004h" if modes[:bracketed_paste_mode]
         result
+      end
+
+      def serialize_dynamic_colors
+        color_manager = @terminal.internal.input_handler.color_manager
+        result = +""
+        result << "\e]10;#{color_manager.foreground}\a" if color_manager.foreground
+        result << "\e]11;#{color_manager.background}\a" if color_manager.background
+        result << "\e]12;#{color_manager.cursor}\a" if color_manager.cursor
+
+        default_palette = Common::ColorPalette.new(color_manager.theme)
+        color_manager.palette.to_a.each_with_index do |color, index|
+          result << "\e]4;#{index};#{color}\a" if color != default_palette[index]
+        end
+        result
+      end
+
+      def serialize_cursor_style
+        "\e[#{cursor_style_param} q"
+      end
+
+      def cursor_style_param
+        case @terminal.internal.input_handler.cursor_style
+        when :blinking_block then 1
+        when :block then 2
+        when :blinking_underline then 3
+        when :underline then 4
+        when :blinking_bar then 5
+        when :bar then 6
+        else 2
+        end
+      end
+
+      def cursor_position(buffer)
+        "\e[#{buffer.y + 1};#{buffer.x + 1}H"
+      end
+
+      def normalized_link(link)
+        return nil unless link
+
+        uri = link[:uri] || link["uri"]
+        return nil if uri.to_s.empty?
+
+        {
+          params: (link[:params] || link["params"] || "").to_s,
+          uri: uri.to_s
+        }
+      end
+
+      def open_link_sequence(link)
+        "\e]8;#{link[:params]};#{link[:uri]}\a"
+      end
+
+      def close_link_sequence
+        "\e]8;;\a"
       end
 
       def build_sgr(cell)
