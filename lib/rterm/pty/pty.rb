@@ -14,7 +14,8 @@ module RTerm
     # @param rows [Integer] terminal rows
     def initialize(command: nil, args: [], env: {}, cols: 80, rows: 24)
       cmd = command || ENV['SHELL'] || '/bin/bash'
-      @master, @slave, @pid = ::PTY.spawn(cmd, *args)
+      spawn_args = env.empty? ? [cmd, *args] : [stringify_env(env), cmd, *args]
+      @master, @slave, @pid = ::PTY.spawn(*spawn_args)
       @master.winsize = [rows, cols]
       @on_data_callbacks = []
       @on_exit_callbacks = []
@@ -24,6 +25,18 @@ module RTerm
     # Write data to the PTY
     def write(data)
       @slave.write(data)
+    end
+
+    # Read available PTY output without blocking.
+    # @return [String, nil]
+    def read
+      data = @master.read_nonblock(4096)
+      data.force_encoding('UTF-8')
+      data
+    rescue IO::WaitReadable
+      nil
+    rescue EOFError, Errno::EIO
+      nil
     end
 
     # Register callback for data received from PTY
@@ -84,5 +97,13 @@ module RTerm
         @on_exit_callbacks.each { |cb| cb.call(code) }
       end
     end
+
+    def stringify_env(env)
+      env.each_with_object({}) do |(key, value), result|
+        result[key.to_s] = value.to_s
+      end
+    end
   end
+
+  PTY = Pty unless const_defined?(:PTY, false)
 end

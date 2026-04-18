@@ -25,6 +25,11 @@ module RTerm
         ERROR            = 'error'
       end
 
+      module BinaryFrame
+        INPUT = 0x01
+        OUTPUT = 0x02
+      end
+
       # Encode a message to JSON string
       # @param type [String] message type
       # @param session_id [String] session identifier
@@ -52,6 +57,38 @@ module RTerm
         }
       rescue JSON::ParserError => e
         raise ProtocolError, "Invalid JSON: #{e.message}"
+      end
+
+      # Encode input/output data as a binary frame with a 1-byte type flag.
+      # @param type [Symbol, String] :input or :output
+      # @param data [String]
+      # @return [String]
+      def self.encode_binary(type, data)
+        flag = case type.to_s
+               when MessageType::INPUT then BinaryFrame::INPUT
+               when MessageType::OUTPUT then BinaryFrame::OUTPUT
+               else
+                 raise ProtocolError, "Unsupported binary frame type: #{type}"
+               end
+        [flag].pack("C") + data.to_s.b
+      end
+
+      # Decode a binary input/output frame.
+      # @param data [String]
+      # @return [Hash]
+      def self.decode_binary(data)
+        bytes = data.to_s.b
+        flag = bytes.getbyte(0)
+        payload = bytes.byteslice(1..)&.force_encoding("UTF-8")&.scrub || ""
+
+        case flag
+        when BinaryFrame::INPUT
+          { type: MessageType::INPUT, payload: { 'data' => payload } }
+        when BinaryFrame::OUTPUT
+          { type: MessageType::OUTPUT, payload: { 'data' => payload } }
+        else
+          raise ProtocolError, "Unknown binary frame flag: #{flag.inspect}"
+        end
       end
 
       # Convenience methods for creating server messages

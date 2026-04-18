@@ -5,6 +5,8 @@ require_relative "../terminal_options"
 require_relative "../service_container"
 require_relative "buffer/buffer_set"
 require_relative "parser/escape_sequence_parser"
+require_relative "input/text_decoder"
+require_relative "input/write_buffer"
 require_relative "input/input_handler"
 require_relative "unicode/unicode_handler"
 
@@ -17,7 +19,7 @@ module RTerm
       include EventEmitter
 
       attr_reader :cols, :rows, :buffer_set, :parser, :input_handler,
-                  :unicode_handler, :options, :services
+                  :unicode_handler, :options, :services, :write_buffer
 
       # @param options [Hash] terminal options
       # @option options [Integer] :cols (80) number of columns
@@ -32,6 +34,10 @@ module RTerm
         @unicode_handler = UnicodeHandler.new
         @buffer_set = BufferSet.new(@cols, @rows, @scrollback)
         @parser = EscapeSequenceParser.new
+        @text_decoder = TextDecoder.new
+        @write_buffer = WriteBuffer.new do |chunk|
+          @parser.parse(@text_decoder.decode(chunk))
+        end
         @services = ServiceContainer.new
         register_services
         @input_handler = InputHandler.new(@buffer_set, @parser, @unicode_handler, @options.to_h)
@@ -43,7 +49,8 @@ module RTerm
       # The data is parsed and applied to the buffer.
       # @param data [String] the data to write
       def write(data)
-        @parser.parse(data)
+        data = data.to_s.gsub(/\r?\n/, "\r\n") if @options.convert_eol
+        @write_buffer.write(data)
         emit(:write_parsed)
       end
 
@@ -71,6 +78,7 @@ module RTerm
       # Resets the terminal to its initial state.
       def reset
         @parser.reset
+        @write_buffer.clear
         @buffer_set.normal.clear
         @buffer_set.alt.clear
         @buffer_set.activate_normal_buffer
@@ -94,6 +102,8 @@ module RTerm
         @input_handler.on(:cursor_move) { emit(:cursor_move) }
         @input_handler.on(:line_feed) { emit(:line_feed) }
         @input_handler.on(:data) { |data| emit(:data, data) }
+        @input_handler.on(:hyperlink) { |payload| emit(:hyperlink, payload) }
+        @input_handler.on(:clipboard) { |payload| emit(:clipboard, payload) }
       end
     end
   end

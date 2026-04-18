@@ -70,6 +70,27 @@ RSpec.describe RTerm::BrowserBridge::ProtocolHandler do
       expect(msg['payload']['message']).to eq('something went wrong')
     end
   end
+
+  describe 'binary frames' do
+    it 'encodes and decodes input frames' do
+      frame = described_class.encode_binary(:input, "abc")
+      decoded = described_class.decode_binary(frame)
+
+      expect(decoded).to eq({ type: 'input', payload: { 'data' => 'abc' } })
+    end
+
+    it 'encodes and decodes output frames' do
+      frame = described_class.encode_binary(:output, "xyz")
+      decoded = described_class.decode_binary(frame)
+
+      expect(decoded).to eq({ type: 'output', payload: { 'data' => 'xyz' } })
+    end
+
+    it 'rejects unknown binary frame flags' do
+      expect { described_class.decode_binary("\xFFbad".b) }
+        .to raise_error(RTerm::BrowserBridge::ProtocolError, /Unknown binary frame/)
+    end
+  end
 end
 
 RSpec.describe RTerm::BrowserBridge::SessionManager do
@@ -115,6 +136,27 @@ RSpec.describe RTerm::BrowserBridge::SessionManager do
       manager.write(id, "Hello")
       terminal = manager.get_terminal(id)
       expect(terminal.buffer.active.get_line(0).to_string).to eq("Hello")
+    end
+
+    it 'forwards input to PTY-backed sessions and emits output' do
+      skip "PTY not available" unless defined?(::PTY)
+
+      pty_manager = described_class.new(max_sessions: 1)
+      received = +""
+      pty_manager.on_output { |_session_id, data| received << data }
+
+      id = pty_manager.create_session(command: "/bin/cat")
+      sleep 0.1
+      pty_manager.write(id, "bridge\n")
+
+      10.times do
+        break if received.include?("bridge")
+
+        sleep 0.1
+      end
+      pty_manager.destroy_session(id)
+
+      expect(received).to include("bridge")
     end
   end
 

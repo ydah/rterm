@@ -263,8 +263,18 @@ module RTerm
         [0xE0100, 0xE01EF], # Variation selectors supplement
       ].freeze
 
+      EMOJI_RANGES = [
+        [0x1F000, 0x1FAFF],
+        [0x2600, 0x27BF]
+      ].freeze
+
       def initialize
-        @providers = { DEFAULT_VERSION => method(:builtin_char_width) }
+        @providers = {
+          DEFAULT_VERSION => method(:builtin_char_width),
+          "6" => method(:builtin_char_width),
+          "11" => method(:builtin_char_width),
+          "15" => method(:builtin_char_width)
+        }
         @active_version = DEFAULT_VERSION
       end
 
@@ -305,6 +315,24 @@ module RTerm
       # @return [Boolean]
       def wide?(codepoint)
         char_width(codepoint) == 2
+      end
+
+      # @param codepoint [Integer]
+      # @return [Boolean]
+      def is_wide(codepoint)
+        wide?(codepoint)
+      end
+
+      # @param codepoint [Integer]
+      # @return [Boolean]
+      def is_emoji(codepoint)
+        in_ranges?(codepoint, EMOJI_RANGES)
+      end
+
+      # @param str [String]
+      # @return [Array<String>]
+      def grapheme_clusters(str)
+        str.to_s.scan(/\X/)
       end
 
       private
