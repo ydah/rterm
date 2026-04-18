@@ -251,17 +251,17 @@ module RTerm
             i -= 1
 
           when ParserAction::DCS_UNHOOK
-            handlers = @dcs_handlers[@dcs_ident]
-            if handlers
-              (handlers.length - 1).downto(0) do |j|
-                handlers[j].call(@dcs_data, @params)
-              end
-            end
+            dispatch_dcs
           end
 
           # Dispatch pending OSC/DCS when leaving those states
           if @current_state == OSC_STRING && next_state != OSC_STRING && action != ParserAction::OSC_END
             dispatch_osc(code)
+          end
+
+          if @current_state == DCS_PASSTHROUGH && next_state != DCS_PASSTHROUGH &&
+             action != ParserAction::DCS_UNHOOK
+            dispatch_dcs
           end
 
           @current_state = next_state
@@ -301,6 +301,15 @@ module RTerm
 
         (handlers.length - 1).downto(0) do |j|
           handlers[j].call(@osc_data)
+        end
+      end
+
+      def dispatch_dcs
+        handlers = @dcs_handlers[@dcs_ident]
+        return unless handlers
+
+        (handlers.length - 1).downto(0) do |j|
+          handlers[j].call(@dcs_data, @params)
         end
       end
 

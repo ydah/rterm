@@ -39,6 +39,7 @@ module RTerm
         @utf8_mouse_mode = false
         @urxvt_mouse_mode = false
         @color_manager = ColorManager.new(options[:theme] || RTerm::Theme.new)
+        @current_link = nil
         @charset_g = 0
         @charsets = [Charsets.fetch(:ascii), Charsets.fetch(:ascii)]
         @last_printed_char = nil
@@ -78,6 +79,7 @@ module RTerm
         register_csi_handlers
         register_esc_handlers
         register_osc_handlers
+        register_dcs_handlers
       end
 
       # ── C0 handlers ──
@@ -126,6 +128,7 @@ module RTerm
           @print_cell.copy_from(@cur_attr)
           @print_cell.char = ch
           @print_cell.width = width
+          @print_cell.link = @current_link&.dup
 
           line.set_cell(buf.x, @print_cell)
 
@@ -441,7 +444,9 @@ module RTerm
 
         @parser.set_osc_handler(8) do |data|
           params, uri = data.split(";", 2)
-          emit(:hyperlink, { params: params || "", uri: uri || "" })
+          payload = { params: params || "", uri: uri || "" }
+          @current_link = payload[:uri].empty? ? nil : payload
+          emit(:hyperlink, payload)
         end
 
         @parser.set_osc_handler(10) do |data|
@@ -461,6 +466,10 @@ module RTerm
           emit(:clipboard, { selection: selection || "", data: encoded || "" })
         end
 
+        @parser.set_osc_handler(1337) do |data|
+          handle_iterm2_osc(data)
+        end
+
         @parser.set_osc_handler(104) do |data|
           handle_palette_reset_osc(data)
         end
@@ -475,6 +484,16 @@ module RTerm
 
         @parser.set_osc_handler(112) do
           @color_manager.cursor = @color_manager.theme.cursor
+        end
+      end
+
+      def register_dcs_handlers
+        @parser.set_dcs_handler({ intermediates: "$", final: "q" }) do |data, _params|
+          emit(:data, decrqss_response(data))
+        end
+
+        @parser.set_dcs_handler({ final: "q" }) do |data, params|
+          emit(:image, { protocol: :sixel, params: dcs_params_array(params), data: data })
         end
       end
 
@@ -842,6 +861,7 @@ module RTerm
         @urxvt_mouse_mode = false
         @color_manager.reset_defaults
         @color_manager.reset_ansi_color
+        @current_link = nil
         @charset_g = 0
         @charsets = [Charsets.fetch(:ascii), Charsets.fetch(:ascii)]
         @last_printed_char = nil
@@ -880,6 +900,42 @@ module RTerm
         else
           indexes.each { |index| @color_manager.reset_ansi_color(index.to_i) }
         end
+      end
+
+      def handle_iterm2_osc(data)
+        header, encoded = data.split(":", 2)
+        return unless header&.start_with?("File=")
+
+        emit(:image, { protocol: :iterm2, params: header.delete_prefix("File="), data: encoded || "" })
+      end
+
+      def dcs_params_array(params)
+        values = params.to_array
+        values == [0] ? [] : values
+      end
+
+      def decrqss_response(request)
+        case request
+        when "m"
+          "\eP1$r#{current_sgr_params.join(';')}m\e\\"
+        when "r"
+          "\eP1$r#{buffer.scroll_top + 1};#{buffer.scroll_bottom + 1}r\e\\"
+        else
+          "\eP0$r#{request}\e\\"
+        end
+      end
+
+      def current_sgr_params
+        params = []
+        params << 1 if @cur_attr.bold?
+        params << 2 if @cur_attr.dim?
+        params << 3 if @cur_attr.italic?
+        params << 4 if @cur_attr.underline?
+        params << 5 if @cur_attr.blink?
+        params << 7 if @cur_attr.inverse?
+        params << 8 if @cur_attr.invisible?
+        params << 9 if @cur_attr.strikethrough?
+        params.empty? ? [0] : params
       end
 
       def save_cursor_state(target_buffer = buffer)
