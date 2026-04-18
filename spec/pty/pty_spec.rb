@@ -22,6 +22,23 @@ RSpec.describe RTerm::Pty do
       pty.close
       expect(received).to include("hello")
     end
+
+    it "handles large output in bounded read chunks" do
+      size = 128 * 1024
+      pty = described_class.new(
+        command: RbConfig.ruby,
+        args: ["-e", "print 'x' * #{size}"],
+        read_chunk_size: 8192
+      )
+      received = +""
+      pty.on_data { |data| received << data }
+
+      wait_until { received.bytesize >= size || pty.exit_status }
+      pty.close
+
+      expect(received.bytesize).to eq(size)
+      expect(pty.exit_status).to eq(0)
+    end
   end
 
   describe "#write" do
@@ -61,6 +78,16 @@ RSpec.describe RTerm::Pty do
       sleep 0.1
       expect { pty.close }.not_to raise_error
     end
+
+    it "is idempotent" do
+      pty = described_class.new(command: "/bin/cat")
+
+      expect(pty.close).to be true
+      expect { pty.close }.not_to raise_error
+      expect(pty.close).to be false
+      expect(pty.closed?).to be true
+      expect(pty.write("ignored\n")).to be false
+    end
   end
 
   describe "#resize" do
@@ -87,6 +114,28 @@ RSpec.describe RTerm::Pty do
       sleep 1
       pty.close
       expect(exit_code).to eq(0)
+    end
+
+    it "stores exit status and calls late exit callbacks immediately" do
+      pty = described_class.new(command: RbConfig.ruby, args: ["-e", "exit 7"])
+
+      pty.wait_for_exit(2)
+      late_code = nil
+      pty.on_exit { |code| late_code = code }
+      pty.close
+
+      expect(pty.exit_status).to eq(7)
+      expect(late_code).to eq(7)
+      expect(pty.alive?).to be false
+    end
+  end
+
+  def wait_until(timeout: 2.0)
+    deadline = Time.now + timeout
+    until yield
+      raise "timed out waiting for PTY condition" if Time.now >= deadline
+
+      sleep 0.01
     end
   end
 end
