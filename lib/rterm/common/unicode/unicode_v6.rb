@@ -6,6 +6,10 @@ module RTerm
   module Common
     # Unicode 6 width provider.
     class UnicodeV6 < UnicodeHandler
+      def initialize
+        super
+        self.active_version = "6"
+      end
     end
   end
 end

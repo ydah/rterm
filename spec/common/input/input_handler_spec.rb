@@ -40,6 +40,16 @@ RSpec.describe RTerm::Common::InputHandler do
       parse("日本語")
       expect(line_text(0)).to eq("日本語")
     end
+
+    it "prints emoji variation sequences as one wide cell" do
+      parse("a©\uFE0Fb")
+
+      expect(line_text(0)).to eq("a©️b")
+      expect(cell_at(1, 0).char).to eq("©\uFE0F")
+      expect(cell_at(1, 0).width).to eq(2)
+      expect(cell_at(2, 0).width).to eq(0)
+      expect(buffer.x).to eq(4)
+    end
   end
 
   describe "autowrap" do

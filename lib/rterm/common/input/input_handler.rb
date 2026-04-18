@@ -104,7 +104,7 @@ module RTerm
 
       def print_chars(data)
         buf = buffer
-        data.each_char do |raw_ch|
+        @unicode_handler.grapheme_clusters(data).each do |raw_ch|
           ch = translate_char(raw_ch)
           width = char_width(ch)
 
@@ -853,7 +853,7 @@ module RTerm
       # ── Character width ──
 
       def char_width(ch)
-        @unicode_handler.char_width(ch.ord)
+        @unicode_handler.char_width(ch)
       end
 
       def translate_char(ch)
