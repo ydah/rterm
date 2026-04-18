@@ -76,24 +76,19 @@ module RTerm
       # @param new_cols [Integer] new number of columns
       # @param new_rows [Integer] new number of rows
       def resize(new_cols, new_rows)
-        fill = CellData.new
-
-        # Resize existing lines
-        @lines.each do |line|
-          line.resize(new_cols, fill) if line
-        end
-
-        # Add or remove rows
-        if new_rows > @rows
-          (new_rows - @rows).times do
-            @lines.push(BufferLine.new(new_cols))
-          end
-        end
+        old_scroll_bottom = @scroll_bottom
+        old_rows = @rows
+        reflow_lines(new_cols, new_rows) if new_cols != @cols
 
         @cols = new_cols
         @rows = new_rows
-        @scroll_bottom = new_rows - 1 if @scroll_bottom >= new_rows
         @lines.max_length = new_rows + @scrollback
+        @lines.push(new_blank_line) while @lines.length < new_rows
+        @scroll_bottom = if old_scroll_bottom == old_rows - 1 || @scroll_bottom >= new_rows
+                           new_rows - 1
+                         else
+                           @scroll_bottom
+                         end
         @y_base = [@y_base, max_y_base].min
         @y_disp = [@y_disp, @y_base].min
         @x = [@x, new_cols - 1].min
@@ -158,6 +153,76 @@ module RTerm
 
       def max_y_base
         [@lines.length - @rows, 0].max
+      end
+
+      def reflow_lines(new_cols, new_rows)
+        groups = logical_line_groups
+        reflowed = groups.flat_map { |group| reflow_group(group, new_cols) }
+        reflowed << BufferLine.new(new_cols) while reflowed.length < new_rows
+
+        @lines = CircularList.new(new_rows + @scrollback)
+        reflowed.each { |line| @lines.push(line) }
+      end
+
+      def logical_line_groups
+        groups = []
+        current = []
+
+        @lines.each do |line|
+          next unless line
+
+          current << line
+          next if line.is_wrapped
+
+          groups << current
+          current = []
+        end
+
+        groups << current unless current.empty?
+        groups
+      end
+
+      def reflow_group(group, new_cols)
+        cells = group.flat_map { |line| reflowable_cells(line) }
+        return [BufferLine.new(new_cols)] if cells.empty?
+
+        lines = []
+        current_line = BufferLine.new(new_cols)
+        current_col = 0
+
+        cells.each do |cell|
+          width = [cell.width, 1].max
+          if current_col.positive? && current_col + width > new_cols
+            current_line.is_wrapped = true
+            lines << current_line
+            current_line = BufferLine.new(new_cols)
+            current_col = 0
+          end
+
+          current_line.set_cell(current_col, cell)
+          if width == 2 && current_col + 1 < new_cols
+            spacer = CellData.new
+            spacer.width = 0
+            current_line.set_cell(current_col + 1, spacer)
+          end
+          current_col += width
+        end
+
+        lines << current_line
+        lines
+      end
+
+      def reflowable_cells(line)
+        trimmed = line.get_trimmed_length
+        cells = []
+        trimmed.times do |index|
+          cell = line.get_cell(index)
+          next unless cell
+          next if cell.width.zero?
+
+          cells << cell.clone
+        end
+        cells
       end
     end
   end
