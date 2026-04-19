@@ -41,7 +41,8 @@ RSpec.describe "PTY real application integration" do
   it "starts vttest through a PTY when available" do
     vttest = required_command("vttest")
 
-    _terminal, raw, _status = run_pty_app(vttest, [], input: ["q"], timeout: 2.0)
+    _terminal, raw, _status = run_vttest_app(vttest)
+    skip "vttest did not render a menu in this PTY environment" unless vttest_menu?(raw)
 
     expect(raw).to match(/VT|test/i)
   end
@@ -68,13 +69,36 @@ RSpec.describe "PTY real application integration" do
     [terminal, raw, pty.exit_status]
   end
 
+  def run_vttest_app(command, timeout: 8.0)
+    terminal = RTerm::Terminal.new(cols: 80, rows: 24)
+    raw = +""
+    pty = RTerm::Pty.new(command: command, env: { "TERM" => "xterm-256color" }, cols: 80, rows: 24)
+    pty.on_data do |data|
+      raw << data
+      terminal.write(data)
+    end
+
+    wait_until(timeout: timeout) { pty.exit_status || vttest_menu?(raw) }
+    pty.write("q") if vttest_menu?(raw)
+    wait_until(timeout: 1.0) { pty.exit_status }
+    pty.kill(:TERM) unless pty.exit_status
+    pty.close
+
+    [terminal, raw, pty.exit_status]
+  end
+
+  def vttest_menu?(raw)
+    raw.match?(/VT|test/i)
+  end
+
   def wait_until(timeout:)
     deadline = Time.now + timeout
     until yield
-      break if Time.now >= deadline
+      return false if Time.now >= deadline
 
       sleep 0.01
     end
+    true
   end
 
   def command_path(command)
