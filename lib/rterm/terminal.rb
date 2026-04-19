@@ -71,6 +71,16 @@ module RTerm
       input(payload)
     end
 
+    # Encodes and emits a high-level key event as terminal input.
+    # @param key [Symbol, String]
+    # @param modifiers [Array<Symbol>]
+    # @param text [String, nil]
+    # @return [String, nil]
+    def key_event(key, modifiers: [], text: nil)
+      encoded = Common::KeyEncoder.new(modes).encode(key, modifiers: modifiers, text: text)
+      input(encoded) if encoded
+    end
+
     # --- Buffer Access ---
 
     # Returns the buffer namespace for accessing buffer content.

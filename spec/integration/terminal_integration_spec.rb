@@ -119,6 +119,17 @@ RSpec.describe RTerm::Terminal do
       expect(payload).to eq("\e[200~hello\n\e[201~")
       expect(received).to eq(payload)
     end
+
+    it "emits encoded key events using current terminal modes" do
+      received = nil
+      terminal.on(:data) { |data| received = data }
+      terminal.write("\e[?1h")
+
+      payload = terminal.key_event(:up)
+
+      expect(payload).to eq("\eOA")
+      expect(received).to eq(payload)
+    end
   end
 
   describe "#resize" do
