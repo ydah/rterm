@@ -1,6 +1,8 @@
 # RTerm
 
-RTerm is a headless terminal emulator library for Ruby.
+RTerm is a headless terminal emulator library for Ruby. It owns terminal state,
+ANSI/VT parsing, scrollback, PTY integration, and BrowserBridge transport
+helpers; rendering stays in the host application.
 
 ## Overview
 
@@ -20,6 +22,9 @@ RTerm is a headless terminal emulator library for Ruby.
 ```ruby
 # Gemfile
 gem "rterm"
+
+# BrowserBridge Rack/WebSocket deployment also needs:
+gem "faye-websocket"
 ```
 
 ```bash
@@ -31,7 +36,7 @@ gem install rterm
 ```ruby
 require "rterm"
 
-term = RTerm::Terminal.new(cols: 80, rows: 24)
+term = RTerm::Terminal.new(cols: 80, rows: 24, scrollback: 1_000)
 term.write("Hello \e[1;31mWorld\e[0m!\r\n")
 
 line = term.buffer.active.get_line(0)
@@ -132,12 +137,41 @@ message = RTerm::BrowserBridge::ProtocolHandler.decode(
 response = manager.process_message(message)
 ```
 
+Production BrowserBridge setup:
+
+```ruby
+RTerm::BrowserBridge::WebSocketServer.configure_secure_defaults do |config|
+  config.allowed_origins = ["https://your-app.example"]
+  config.authenticator = lambda do |message|
+    payload = message[:payload] || message["payload"] || {}
+    token = payload[:token] || payload["token"]
+
+    token == ENV.fetch("RTERM_BRIDGE_TOKEN")
+  end
+  config.terminal_options = config.terminal_options.merge(scrollback: 5_000)
+end
+```
+
 More examples:
 
 - `examples/basic_usage.rb`
 - `examples/addons.rb`
 - `examples/websocket_server.rb`
 - `examples/browser_bridge_production.rb`
+
+## Security Notes
+
+- Disable clipboard handling for untrusted remote output with `clipboard_enabled: false`.
+- Set `allowed_origins` for BrowserBridge deployments.
+- Keep message size limits, rate limits, and heartbeat timeouts enabled in production.
+- PTY commands run with the host process permissions; do not connect untrusted browser input directly to a privileged shell.
+- Validate URI schemes in the host app before activating OSC 8 hyperlinks.
+
+## Platform Status
+
+- Unix PTY: supported through the PTY backend.
+- Windows ConPTY: planned, but not implemented yet.
+- Rendering: intentionally out of scope; rterm is a headless core.
 
 ## Documentation
 

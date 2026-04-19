@@ -29,3 +29,5 @@ jobs:
           bundler-cache: true
       - name: Run the default task
         run: bundle exec rake
+      - name: Verify package contents
+        run: bundle exec rake package:verify_contents

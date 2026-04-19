@@ -158,6 +158,33 @@ RSpec.describe RTerm::BrowserBridge::SessionManager do
         .to raise_error(RTerm::BrowserBridge::SessionError, /Maximum sessions/)
     end
 
+    it 'passes configured terminal options to created terminals' do
+      configured = described_class.new(terminal_options: { scrollback: 5, clipboard_enabled: false })
+      id = configured.create_session
+      terminal = configured.get_terminal(id)
+
+      expect(terminal.options.scrollback).to eq(5)
+      expect(terminal.options.clipboard_enabled).to be false
+    end
+
+    it 'allows per-session terminal options to override defaults' do
+      configured = described_class.new(terminal_options: { scrollback: 5 })
+      id = configured.create_session(scrollback: 10, cols: 100, rows: 30)
+      terminal = configured.get_terminal(id)
+
+      expect(terminal.options.scrollback).to eq(10)
+      expect(terminal.cols).to eq(100)
+      expect(terminal.rows).to eq(30)
+    end
+
+    it 'does not pass pty-only options to Terminal' do
+      configured = described_class.new(terminal_options: { scrollback: 5 })
+
+      expect do
+        configured.create_session(command: nil, args: ["--unused"], env: { "A" => "B" }, cwd: Dir.pwd)
+      end.not_to raise_error
+    end
+
     it 'cleans up sessions past absolute timeout' do
       now = Time.at(100)
       timed = described_class.new(max_sessions: 3, session_timeout: 10, clock: -> { now })
@@ -415,6 +442,27 @@ RSpec.describe RTerm::BrowserBridge::SessionManager do
       expect(JSON.parse(response)['payload']['code']).to eq('rate_limited')
     end
 
+    it 'accepts max_messages as a legacy rate limit alias' do
+      now = Time.at(100)
+      limited = described_class.new(rate_limit: { max_messages: 1, interval: 10 }, clock: -> { now })
+      msg = { type: 'ping', session_id: nil, payload: {} }
+
+      expect(JSON.parse(limited.process_message(msg))['type']).to eq('pong')
+      response = limited.process_message(msg)
+
+      expect(JSON.parse(response)['payload']['code']).to eq('rate_limited')
+    end
+
+    it 'raises a clear error for invalid rate limit configuration' do
+      expect do
+        described_class.new(rate_limit: { interval: 1.0 })
+      end.to raise_error(ArgumentError, /rate_limit.*limit.*interval/)
+
+      expect do
+        described_class.new(rate_limit: { limit: 0, interval: 1.0 })
+      end.to raise_error(ArgumentError, /rate_limit.*limit.*interval/)
+    end
+
     it 'expires sessions that miss heartbeats' do
       now = Time.at(100)
       timed = described_class.new(heartbeat_timeout: 10, clock: -> { now })
@@ -429,6 +477,37 @@ RSpec.describe RTerm::BrowserBridge::SessionManager do
       now = Time.at(116)
       timed.cleanup_expired
       expect(timed.session_exists?(id)).to be false
+    end
+  end
+
+  describe 'callback subscriptions' do
+    it 'allows output callbacks to be unsubscribed' do
+      calls = []
+      subscription = manager.on_output { |session_id, data| calls << [session_id, data] }
+      id = manager.create_session
+
+      expect(subscription).to be_a(RTerm::Common::Disposable)
+
+      manager.queue_output(id, "before")
+      subscription.dispose
+      subscription.dispose
+      manager.queue_output(id, "after")
+
+      expect(calls.map(&:last)).to eq(["before"])
+    end
+
+    it 'allows exit callbacks to be unsubscribed' do
+      queued = described_class.new(auto_flush_output: false, output_queue_limit: 2)
+      id = queued.create_session
+      calls = []
+      subscription = queued.on_exit { |session_id, code| calls << [session_id, code] }
+
+      expect(subscription).to be_a(RTerm::Common::Disposable)
+
+      subscription.dispose
+      queued.queue_output(id, "abc")
+
+      expect(calls).to eq([])
     end
   end
 

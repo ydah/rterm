@@ -2,7 +2,9 @@
 
 require 'securerandom'
 require 'set'
+require_relative "../common/event_emitter"
 require_relative "../pty/pty"
+require_relative "../terminal_options"
 
 module RTerm
   module BrowserBridge
@@ -21,14 +23,14 @@ module RTerm
         @sessions = {}
         @max_sessions = max_sessions
         @default_command = default_command
-        @terminal_options = terminal_options
+        @terminal_options = symbolize_keys(terminal_options || {})
         @session_timeout = session_timeout
         @idle_timeout = idle_timeout
         @authenticator = authenticator
         @output_queue_limit = output_queue_limit
         @auto_flush_output = auto_flush_output
         @max_message_bytes = max_message_bytes
-        @rate_limit = rate_limit
+        @rate_limit = normalize_rate_limit(rate_limit)
         @heartbeat_timeout = heartbeat_timeout
         @attach_policy = attach_policy.to_sym
         @clock = clock
@@ -50,11 +52,12 @@ module RTerm
         raise SessionError, "Maximum sessions (#{@max_sessions}) reached" if @sessions.size >= @max_sessions
 
         session_id = SecureRandom.uuid
-        session_options = @terminal_options.merge(options)
-        cols = session_options.fetch(:cols, 80)
-        rows = session_options.fetch(:rows, 24)
+        session_options = @terminal_options.merge(symbolize_keys(options))
+        terminal_options = terminal_options_from(session_options)
+        cols = terminal_options.fetch(:cols, 80)
+        rows = terminal_options.fetch(:rows, 24)
 
-        terminal = RTerm::Terminal.new(cols: cols, rows: rows)
+        terminal = RTerm::Terminal.new(terminal_options)
         pty = create_pty(session_options, cols, rows)
         wire_pty(session_id, terminal, pty) if pty
         @sessions[session_id] = {
@@ -147,14 +150,22 @@ module RTerm
 
       # Registers a callback for PTY output.
       # @yield [session_id, data]
+      # @return [RTerm::Common::Disposable]
       def on_output(&block)
+        raise ArgumentError, "on_output requires a block" unless block
+
         @output_callbacks << block
+        RTerm::Common::Disposable.new { @output_callbacks.delete(block) }
       end
 
       # Registers a callback for PTY exit.
       # @yield [session_id, code]
+      # @return [RTerm::Common::Disposable]
       def on_exit(&block)
+        raise ArgumentError, "on_exit requires a block" unless block
+
         @exit_callbacks << block
+        RTerm::Common::Disposable.new { @exit_callbacks.delete(block) }
       end
 
       # Queues output and flushes it to subscribers unless backpressure is enabled.
@@ -165,7 +176,7 @@ module RTerm
         bytes = data.to_s.bytesize
         if session[:queued_output_bytes] + bytes > @output_queue_limit
           destroy_session(session_id)
-          @exit_callbacks.each { |callback| callback.call(session_id, nil) }
+          @exit_callbacks.dup.each { |callback| callback.call(session_id, nil) }
           return
         end
 
@@ -314,6 +325,45 @@ module RTerm
         touch(session)
       end
 
+      def normalize_rate_limit(rate_limit)
+        return nil unless rate_limit
+
+        config = symbolize_keys(rate_limit)
+        limit = config[:limit] || config[:max_messages]
+        interval = config[:interval]
+
+        if limit.nil? || interval.nil?
+          raise ArgumentError, "rate_limit requires :limit and :interval"
+        end
+
+        normalized = {
+          limit: Integer(limit),
+          interval: Float(interval)
+        }
+
+        if normalized[:limit] <= 0 || normalized[:interval] <= 0
+          raise ArgumentError, "rate_limit :limit and :interval must be greater than 0"
+        end
+
+        normalized
+      rescue TypeError, ArgumentError => e
+        raise e if e.message.include?("rate_limit")
+
+        raise ArgumentError, "rate_limit requires numeric :limit and :interval"
+      end
+
+      def symbolize_keys(hash)
+        source = hash.respond_to?(:to_h) ? hash.to_h : hash
+        source.each_with_object({}) do |(key, value), result|
+          result[key.to_sym] = value
+        end
+      end
+
+      def terminal_options_from(session_options)
+        allowed = RTerm::TerminalOptions::DEFAULTS.keys
+        session_options.select { |key, _value| allowed.include?(key.to_sym) }
+      end
+
       def attach_client(session, client_id)
         client_id = client_id.to_s
         case @attach_policy
@@ -377,7 +427,7 @@ module RTerm
         until session[:output_queue].empty?
           data = session[:output_queue].shift
           session[:queued_output_bytes] -= data.to_s.bytesize
-          @output_callbacks.each { |callback| callback.call(session_id, data) }
+          @output_callbacks.dup.each { |callback| callback.call(session_id, data) }
         end
       end
 
@@ -404,7 +454,7 @@ module RTerm
         pty.on_exit do |code|
           session = @sessions.delete(session_id)
           session[:terminal].dispose if session
-          @exit_callbacks.each { |callback| callback.call(session_id, code) }
+          @exit_callbacks.dup.each { |callback| callback.call(session_id, code) }
         end
       end
     end
