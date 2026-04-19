@@ -22,6 +22,36 @@ RSpec.describe "DCS and OSC enhanced handling" do
     expect(response).to eq("\eP1$r0m\e\\")
   end
 
+  it "responds to DECRQSS cursor style requests" do
+    response = nil
+    terminal.on(:data) { |data| response = data }
+    terminal.write("\e[5 q")
+
+    terminal.write("\eP$q q\e\\")
+
+    expect(response).to eq("\eP1$r5 q\e\\")
+  end
+
+  it "responds to DECRQSS DECSCA requests" do
+    response = nil
+    terminal.on(:data) { |data| response = data }
+    terminal.write("\e[1\"q")
+
+    terminal.write("\eP$q\"q\e\\")
+
+    expect(response).to eq("\eP1$r1\"q\e\\")
+  end
+
+  it "responds to DECRQSS DECSLRM requests" do
+    response = nil
+    terminal.on(:data) { |data| response = data }
+    terminal.write("\e[?69h\e[3;8s")
+
+    terminal.write("\eP$qs\e\\")
+
+    expect(response).to eq("\eP1$r3;8s\e\\")
+  end
+
   it "emits Sixel image payloads" do
     image = nil
     terminal.on(:image) { |payload| image = payload }

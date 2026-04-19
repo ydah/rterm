@@ -1379,10 +1379,16 @@ module RTerm
 
       def decrqss_response(request)
         case request
+        when " q"
+          "\eP1$r#{cursor_style_param} q\e\\"
+        when '"q'
+          "\eP1$r#{@cur_attr.protected? ? 1 : 0}\"q\e\\"
         when "m"
           "\eP1$r#{current_sgr_params.join(';')}m\e\\"
         when "r"
           "\eP1$r#{buffer.scroll_top + 1};#{buffer.scroll_bottom + 1}r\e\\"
+        when "s"
+          "\eP1$r#{left_margin + 1};#{right_margin + 1}s\e\\"
         else
           "\eP0$r#{request}\e\\"
         end
@@ -1438,6 +1444,18 @@ module RTerm
         when 5 then :blinking_bar
         when 6 then :bar
         else :block
+        end
+      end
+
+      def cursor_style_param
+        case @cursor_style
+        when :blinking_block then 1
+        when :block then 2
+        when :blinking_underline then 3
+        when :underline then 4
+        when :blinking_bar then 5
+        when :bar then 6
+        else 2
         end
       end
 
