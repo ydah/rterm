@@ -42,6 +42,22 @@ RSpec.describe RTerm::BrowserBridge::ProtocolHandler do
     end
   end
 
+  describe '.decode_frame' do
+    it 'decodes JSON frames' do
+      result = described_class.decode_frame('{"type":"ping"}')
+
+      expect(result).to eq({ type: 'ping', session_id: nil, payload: {} })
+    end
+
+    it 'decodes binary frames' do
+      frame = described_class.encode_binary(:input, "abc", session_id: "s1")
+
+      result = described_class.decode_frame(frame)
+
+      expect(result).to eq({ type: 'input', session_id: 's1', payload: { 'data' => 'abc' } })
+    end
+  end
+
   describe 'convenience methods' do
     it '.output creates output message' do
       json = described_class.output('s1', 'data')
@@ -79,6 +95,13 @@ RSpec.describe RTerm::BrowserBridge::ProtocolHandler do
       expect(decoded).to eq({ type: 'input', payload: { 'data' => 'abc' } })
     end
 
+    it 'encodes and decodes session-scoped input frames' do
+      frame = described_class.encode_binary(:input, "abc", session_id: "session-1")
+      decoded = described_class.decode_binary(frame)
+
+      expect(decoded).to eq({ type: 'input', session_id: 'session-1', payload: { 'data' => 'abc' } })
+    end
+
     it 'encodes and decodes output frames' do
       frame = described_class.encode_binary(:output, "xyz")
       decoded = described_class.decode_binary(frame)
@@ -89,6 +112,11 @@ RSpec.describe RTerm::BrowserBridge::ProtocolHandler do
     it 'rejects unknown binary frame flags' do
       expect { described_class.decode_binary("\xFFbad".b) }
         .to raise_error(RTerm::BrowserBridge::ProtocolError, /Unknown binary frame/)
+    end
+
+    it 'rejects truncated session-scoped binary frames' do
+      expect { described_class.decode_binary([0x81, 0, 5].pack("C*") + "ab") }
+        .to raise_error(RTerm::BrowserBridge::ProtocolError, /Truncated binary frame session_id/)
     end
   end
 end
