@@ -56,7 +56,19 @@ RSpec.describe RTerm::Common::UnicodeHandler do
 
     expect(handler.char_width("©")).to eq(1)
     expect(handler.char_width("©\uFE0F")).to eq(2)
+    expect(handler.char_width("☀\uFE0E")).to eq(1)
+    expect(handler.char_width("☀\uFE0F")).to eq(2)
     expect(handler.string_width("a©\uFE0Fb")).to eq(4)
+  end
+
+  it "measures emoji grapheme edge cases as single wide cells" do
+    handler = described_class.new
+    tag_sequence = [0x1F3F4, 0xE0067, 0xE0062, 0xE007F].pack("U*")
+
+    expect(handler.char_width("👨‍👩‍👧‍👦")).to eq(2)
+    expect(handler.char_width("🇺🇸")).to eq(2)
+    expect(handler.char_width("👍🏻")).to eq(2)
+    expect(handler.char_width(tag_sequence)).to eq(2)
   end
 
   it "keeps combining grapheme clusters at the base character width" do
