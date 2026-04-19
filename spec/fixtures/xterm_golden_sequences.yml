@@ -1,0 +1,28 @@
+- name: "sgr colors"
+  cols: 20
+  rows: 4
+  input: "\e[31mred\e[0m"
+  lines:
+    - "red"
+  cells:
+    - row: 0
+      col: 0
+      fg_color_mode: "p16"
+      fg_color: 1
+- name: "cursor movement"
+  cols: 10
+  rows: 3
+  input: "abc\e[2;2HXY"
+  lines:
+    - "abc"
+    - " XY"
+- name: "osc hyperlink"
+  cols: 20
+  rows: 3
+  input: "\e]8;id=1;https://example.com\aLink\e]8;;\a"
+  lines:
+    - "Link"
+  links:
+    - row: 0
+      col: 0
+      uri: "https://example.com"
