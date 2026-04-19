@@ -84,7 +84,7 @@ module RTerm
           end
 
           socket.on(:message) do |event|
-            response = session_manager.process_message(ProtocolHandler.decode(event.data))
+            response = session_manager.process_message(ProtocolHandler.decode_frame(event.data))
             socket.send(response) if response
           rescue ProtocolError => e
             socket.send(ProtocolHandler.error(e.message))
