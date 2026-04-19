@@ -75,7 +75,7 @@ RSpec.describe "OSC handlers and DEC private modes" do
 
     terminal.write("\e]52;c;?\a")
 
-    expect(requests).to eq([{ selection: "c" }])
+    expect(requests).to eq([{ selection: "c", selections: ["clipboard"] }])
     expect(responses).to eq(["\e]52;c;SGVsbG8=\a"])
   end
 
@@ -85,7 +85,47 @@ RSpec.describe "OSC handlers and DEC private modes" do
 
     terminal.write("\e]52;c;not-base64\a")
 
-    expect(clipboard).to include(selection: "c", data: "not-base64", decoded: nil)
+    expect(clipboard).to include(selection: "c", data: "not-base64", decoded: nil, allowed: false, reason: :invalid_base64)
+  end
+
+  it "applies OSC 52 clipboard size limits" do
+    limited = RTerm::Terminal.new(cols: 20, rows: 4, clipboard_max_bytes: 3)
+    clipboard = nil
+    limited.on(:clipboard) { |payload| clipboard = payload }
+
+    limited.write("\e]52;c;SGVsbG8=\a")
+
+    expect(clipboard).to include(allowed: false, reason: :too_large)
+  end
+
+  it "uses OSC 52 write permission hooks" do
+    terminal = RTerm::Terminal.new(cols: 20, rows: 4, clipboard_write_handler: ->(_payload) { false })
+    clipboard = nil
+    terminal.on(:clipboard) { |payload| clipboard = payload }
+
+    terminal.write("\e]52;c;SGVsbG8=\a")
+
+    expect(clipboard).to include(allowed: false, reason: :denied)
+  end
+
+  it "uses OSC 52 read hooks for clipboard queries" do
+    terminal = RTerm::Terminal.new(cols: 20, rows: 4, clipboard_read_handler: ->(_selections) { "Hooked" })
+    responses = []
+    terminal.on(:data) { |data| responses << data }
+
+    terminal.write("\e]52;c;?\a")
+
+    expect(responses).to eq(["\e]52;c;SG9va2Vk\a"])
+  end
+
+  it "writes OSC 52 multi-selection aliases" do
+    responses = []
+    terminal.on(:data) { |data| responses << data }
+
+    terminal.write("\e]52;cp;SGVsbG8=\a")
+    terminal.write("\e]52;p;?\a")
+
+    expect(responses).to eq(["\e]52;p;SGVsbG8=\a"])
   end
 
   it "tracks mouse and focus modes" do

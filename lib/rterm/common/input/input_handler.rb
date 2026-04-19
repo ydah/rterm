@@ -50,6 +50,10 @@ module RTerm
         @default_cursor_style = options[:cursor_style] || :block
         @cursor_style = @default_cursor_style
         @clipboard = {}
+        @clipboard_enabled = options.fetch(:clipboard_enabled, true)
+        @clipboard_max_bytes = options.fetch(:clipboard_max_bytes, 1_048_576).to_i
+        @clipboard_read_handler = options[:clipboard_read_handler]
+        @clipboard_write_handler = options[:clipboard_write_handler]
         @images = []
         @title = ""
         @icon_name = ""
@@ -1317,22 +1321,75 @@ module RTerm
         encoded ||= ""
 
         if encoded == "?"
-          emit(:clipboard_request, { selection: selection })
+          emit(:clipboard_request, { selection: selection, selections: clipboard_selections(selection) })
           respond_to_clipboard_query(selection)
           return
         end
 
         decoded = decode_clipboard_data(encoded)
-        @clipboard[selection] = decoded if decoded
-        emit(:clipboard, { selection: selection, data: encoded, decoded: decoded })
+        payload = {
+          selection: selection,
+          selections: clipboard_selections(selection),
+          data: encoded,
+          decoded: decoded
+        }
+        allowed, reason = clipboard_write_allowed?(payload)
+        payload[:allowed] = allowed
+        payload[:reason] = reason if reason
+        store_clipboard_data(payload[:selections], decoded) if allowed && decoded
+        emit(:clipboard, payload)
       end
 
       def respond_to_clipboard_query(selection)
-        value = @clipboard[selection]
+        selections = clipboard_selections(selection)
+        value = clipboard_query_value(selections)
         return unless value
 
         encoded = encode_clipboard_data(value)
         emit(:data, "\e]52;#{selection};#{encoded}\a")
+      end
+
+      def clipboard_write_allowed?(payload)
+        return [false, :disabled] unless @clipboard_enabled
+        return [false, :invalid_base64] unless payload[:decoded]
+        return [false, :too_large] if payload[:decoded].bytesize > @clipboard_max_bytes
+
+        if @clipboard_write_handler.respond_to?(:call)
+          return [false, :denied] unless @clipboard_write_handler.call(payload)
+        end
+
+        [true, nil]
+      end
+
+      def clipboard_query_value(selections)
+        selections.each do |name|
+          value = @clipboard[name]
+          return value if value
+        end
+
+        return unless @clipboard_enabled && @clipboard_read_handler.respond_to?(:call)
+
+        @clipboard_read_handler.call(selections)
+      end
+
+      def store_clipboard_data(selections, decoded)
+        selections.each { |name| @clipboard[name] = decoded }
+      end
+
+      def clipboard_selections(selection)
+        chars = selection.to_s.empty? ? ["c"] : selection.to_s.chars
+        chars.map { |name| clipboard_selection_alias(name) }
+      end
+
+      def clipboard_selection_alias(name)
+        case name
+        when "c" then "clipboard"
+        when "p" then "primary"
+        when "q" then "secondary"
+        when "s" then "select"
+        when "0".."7" then "cut#{name}"
+        else name
+        end
       end
 
       def decode_clipboard_data(encoded)
