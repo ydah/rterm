@@ -113,6 +113,16 @@ module RTerm
       @terminal.options
     end
 
+    # @return [String] current window title from OSC 0/2
+    def title
+      @terminal.input_handler.title
+    end
+
+    # @return [String] current icon name from OSC 0/1
+    def icon_name
+      @terminal.input_handler.icon_name
+    end
+
     # --- Buffer Operations ---
 
     # Clears the terminal buffer.

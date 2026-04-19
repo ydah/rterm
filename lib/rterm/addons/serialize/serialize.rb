@@ -34,10 +34,12 @@ module RTerm
       #   :include_alt_buffer [Boolean] serialize normal and alternate buffers
       #   :exclude_colors [Boolean] exclude OSC dynamic color state
       #   :exclude_cursor_style [Boolean] exclude DECSCUSR cursor style state
+      #   :exclude_title [Boolean] exclude title/icon name state
       # @return [String] serialized terminal state
       def serialize(options = {})
         buffer_set = @terminal.internal.buffer_set
         result = +""
+        result << serialize_title unless options[:exclude_title]
         result << serialize_modes unless options[:exclude_modes]
         result << serialize_dynamic_colors unless options[:exclude_colors]
         result << serialize_cursor_style unless options[:exclude_cursor_style]
@@ -145,11 +147,38 @@ module RTerm
       def serialize_modes
         modes = @terminal.modes
         result = +""
+        result << "\e[?1h" if modes[:application_cursor_keys_mode]
+        result << "\e=" if modes[:application_keypad_mode]
         result << "\e[?7l" unless modes[:wraparound_mode]
+        result << "\e[?12h" if modes[:cursor_blink]
         result << "\e[4h" if modes[:insert_mode]
         result << "\e[?6h" if modes[:origin_mode]
+        result << "\e[?45h" if modes[:reverse_wraparound_mode]
         result << "\e[?25l" if modes[:cursor_hidden]
+        result << serialize_mouse_modes(modes)
+        result << "\e[?1004h" if modes[:focus_event_mode]
         result << "\e[?2004h" if modes[:bracketed_paste_mode]
+        result
+      end
+
+      def serialize_mouse_modes(modes)
+        result = +""
+        case modes[:mouse_tracking_mode]
+        when :x10 then result << "\e[?1000h"
+        when :button then result << "\e[?1002h"
+        when :any then result << "\e[?1003h"
+        end
+        result << "\e[?1005h" if modes[:utf8_mouse_mode]
+        result << "\e[?1006h" if modes[:sgr_mouse_mode]
+        result << "\e[?1015h" if modes[:urxvt_mouse_mode]
+        result
+      end
+
+      def serialize_title
+        handler = @terminal.internal.input_handler
+        result = +""
+        result << "\e]1;#{handler.icon_name}\a" unless handler.icon_name.to_s.empty?
+        result << "\e]2;#{handler.title}\a" unless handler.title.to_s.empty?
         result
       end
 

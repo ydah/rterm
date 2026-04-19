@@ -99,6 +99,8 @@ module RTerm
         # Forward input handler events
         @input_handler.on(:bell) { emit(:bell) }
         @input_handler.on(:title_change) { |title| emit(:title_change, title) }
+        @input_handler.on(:icon_name_change) { |icon_name| emit(:icon_name_change, icon_name) }
+        @input_handler.on(:window_operation) { |payload| emit(:window_operation, payload) }
         @input_handler.on(:cursor_move) { emit(:cursor_move) }
         @input_handler.on(:line_feed) { emit(:line_feed) }
         @input_handler.on(:data) { |data| emit(:data, data) }
