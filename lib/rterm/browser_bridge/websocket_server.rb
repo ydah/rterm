@@ -19,6 +19,8 @@ module RTerm
         :max_message_bytes,
         :rate_limit,
         :heartbeat_timeout,
+        :attach_policy,
+        :binary_mode,
         keyword_init: true
       )
 
@@ -36,7 +38,9 @@ module RTerm
             allowed_origins: [],
             max_message_bytes: nil,
             rate_limit: nil,
-            heartbeat_timeout: nil
+            heartbeat_timeout: nil,
+            attach_policy: :multiple,
+            binary_mode: :auto
           )
         end
 
@@ -60,7 +64,8 @@ module RTerm
             output_queue_limit: config.output_queue_limit,
             max_message_bytes: config.max_message_bytes,
             rate_limit: config.rate_limit,
-            heartbeat_timeout: config.heartbeat_timeout
+            heartbeat_timeout: config.heartbeat_timeout,
+            attach_policy: config.attach_policy
           )
         end
 
@@ -88,8 +93,11 @@ module RTerm
         end
 
         def wire_socket(socket)
+          binary_output = false
           session_manager.on_output do |session_id, data|
-            socket.send(ProtocolHandler.output(session_id, data))
+            socket.send(
+              binary_output ? ProtocolHandler.encode_binary(:output, data, session_id: session_id) : ProtocolHandler.output(session_id, data)
+            )
           end
           session_manager.on_exit do |session_id, code|
             socket.send(ProtocolHandler.session_exit(session_id, code))
@@ -101,7 +109,19 @@ module RTerm
               next
             end
 
-            response = session_manager.process_message(ProtocolHandler.decode_frame(event.data))
+            if ProtocolHandler.binary_frame?(event.data) && !binary_frame_allowed?
+              socket.send(ProtocolHandler.error("Binary frames are disabled", code: "binary_disabled"))
+              next
+            end
+
+            message = ProtocolHandler.decode_frame(event.data)
+            if message[:type] == ProtocolHandler::MessageType::NEGOTIATE
+              binary_output = negotiate_binary?(message)
+              socket.send(ProtocolHandler.negotiated(binary: binary_output))
+              next
+            end
+
+            response = session_manager.process_message(message)
             socket.send(response) if response
           rescue ProtocolError => e
             socket.send(ProtocolHandler.error(e.message, code: "protocol_error"))
@@ -118,6 +138,17 @@ module RTerm
 
         def message_too_large?(data)
           config.max_message_bytes && data.to_s.bytesize > config.max_message_bytes
+        end
+
+        def binary_frame_allowed?
+          config.binary_mode.to_sym != :disabled
+        end
+
+        def negotiate_binary?(message)
+          return false if config.binary_mode.to_sym == :disabled
+          return true if config.binary_mode.to_sym == :required
+
+          message[:payload]['binary'] == true
         end
       end
     end

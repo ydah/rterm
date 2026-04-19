@@ -13,14 +13,22 @@ module RTerm
         INPUT           = 'input'
         RESIZE          = 'resize'
         CREATE_SESSION  = 'create_session'
+        ATTACH_SESSION  = 'attach_session'
+        DETACH_SESSION  = 'detach_session'
+        RESUME_SESSION  = 'resume_session'
         DESTROY_SESSION = 'destroy_session'
+        NEGOTIATE       = 'negotiate'
         PING            = 'ping'
 
         # Server → Client
         OUTPUT           = 'output'
         SESSION_CREATED  = 'session_created'
+        SESSION_ATTACHED = 'session_attached'
+        SESSION_DETACHED = 'session_detached'
+        SESSION_RESUMED  = 'session_resumed'
         SESSION_DESTROYED = 'session_destroyed'
         SESSION_EXIT     = 'session_exit'
+        NEGOTIATED       = 'negotiated'
         PONG             = 'pong'
         ERROR            = 'error'
       end
@@ -64,11 +72,17 @@ module RTerm
       # @param data [String]
       # @return [Hash]
       def self.decode_frame(data)
+        return decode(data) unless binary_frame?(data)
+
+        decode_binary(data.to_s.b)
+      end
+
+      # @param data [String]
+      # @return [Boolean]
+      def self.binary_frame?(data)
         bytes = data.to_s.b
         first = bytes.lstrip.getbyte(0)
-        return decode(data) if first == "{".ord
-
-        decode_binary(bytes)
+        first != "{".ord
       end
 
       # Encode input/output data as a binary frame with a 1-byte type flag.
@@ -127,6 +141,18 @@ module RTerm
         encode(MessageType::SESSION_CREATED, session_id: session_id)
       end
 
+      def self.session_attached(session_id, payload = {})
+        encode(MessageType::SESSION_ATTACHED, session_id: session_id, payload: payload)
+      end
+
+      def self.session_detached(session_id)
+        encode(MessageType::SESSION_DETACHED, session_id: session_id)
+      end
+
+      def self.session_resumed(session_id, payload = {})
+        encode(MessageType::SESSION_RESUMED, session_id: session_id, payload: payload)
+      end
+
       def self.session_destroyed(session_id)
         encode(MessageType::SESSION_DESTROYED, session_id: session_id)
       end
@@ -137,6 +163,10 @@ module RTerm
 
       def self.pong
         encode(MessageType::PONG)
+      end
+
+      def self.negotiated(binary:)
+        encode(MessageType::NEGOTIATED, payload: { 'binary' => binary })
       end
 
       def self.error(message, session_id: nil, code: nil)
