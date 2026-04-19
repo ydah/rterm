@@ -113,7 +113,180 @@ module RTerm
         result
       end
 
+      # Exports a structured, JSON-friendly terminal snapshot.
+      # @param options [Hash]
+      # @option options [Integer] :scrollback number of normal-buffer scrollback lines to include
+      # @option options [Boolean] :exclude_alt_buffer omit alternate buffer state
+      # @return [Hash]
+      def snapshot(options = {})
+        buffer_set = @terminal.internal.buffer_set
+        buffers = {
+          "normal" => snapshot_buffer(buffer_set.normal, options.fetch(:scrollback, 0))
+        }
+        buffers["alt"] = snapshot_buffer(buffer_set.alt, 0) unless options[:exclude_alt_buffer]
+
+        {
+          "version" => 1,
+          "cols" => @terminal.cols,
+          "rows" => @terminal.rows,
+          "active_buffer" => buffer_set.active.equal?(buffer_set.alt) ? "alt" : "normal",
+          "buffers" => buffers,
+          "state" => snapshot_state,
+          "images" => deep_dup(@terminal.images)
+        }
+      end
+
+      # Restores a snapshot produced by #snapshot into this addon's terminal.
+      # @param data [Hash]
+      # @return [RTerm::Terminal]
+      def restore(data)
+        data = stringify_keys(data)
+        @terminal.resize(data.fetch("cols"), data.fetch("rows"))
+        buffer_set = @terminal.internal.buffer_set
+
+        restore_buffer(buffer_set.normal, data.fetch("buffers").fetch("normal"))
+        restore_buffer(buffer_set.alt, data.fetch("buffers").fetch("alt")) if data.fetch("buffers").key?("alt")
+        data["active_buffer"] == "alt" ? buffer_set.activate_alt_buffer : buffer_set.activate_normal_buffer
+        restore_state(data["state"] || {})
+        @terminal.images.replace(symbolize_image_keys(data["images"] || []))
+        @terminal
+      end
+
+      alias deserialize restore
+
       private
+
+      def snapshot_buffer(buffer, scrollback)
+        indexes = line_indexes(buffer, scrollback)
+        {
+          "cols" => buffer.cols,
+          "rows" => buffer.rows,
+          "x" => buffer.x,
+          "y" => buffer.y,
+          "y_base" => buffer.y_base,
+          "y_disp" => buffer.y_disp,
+          "scroll_top" => buffer.scroll_top,
+          "scroll_bottom" => buffer.scroll_bottom,
+          "lines" => indexes.map { |index| snapshot_line(buffer.lines[index]) }
+        }
+      end
+
+      def snapshot_line(line)
+        line ||= Common::BufferLine.new(@terminal.cols)
+        {
+          "wrapped" => line.is_wrapped,
+          "cells" => line.length.times.map { |index| snapshot_cell(line.get_cell(index)) }
+        }
+      end
+
+      def snapshot_cell(cell)
+        {
+          "char" => cell.char,
+          "width" => cell.width,
+          "fg" => cell.fg,
+          "bg" => cell.bg,
+          "link" => deep_dup(cell.link)
+        }
+      end
+
+      def snapshot_state
+        handler = @terminal.internal.input_handler
+        color_manager = handler.color_manager
+        {
+          "title" => handler.title,
+          "icon_name" => handler.icon_name,
+          "modes" => deep_dup(@terminal.modes),
+          "cursor_style" => handler.cursor_style.to_s,
+          "cursor_blink" => handler.cursor_blink,
+          "dynamic_colors" => {
+            "foreground" => color_manager.foreground,
+            "background" => color_manager.background,
+            "cursor" => color_manager.cursor,
+            "palette" => color_manager.palette.to_a
+          }
+        }
+      end
+
+      def restore_buffer(buffer, data)
+        data = stringify_keys(data)
+        buffer.lines.clear
+        data.fetch("lines").each do |line_data|
+          buffer.lines.push(restore_line(line_data, buffer.cols))
+        end
+        buffer.lines.push(Common::BufferLine.new(buffer.cols)) while buffer.lines.length < buffer.rows
+
+        buffer.x = [[data["x"].to_i, 0].max, buffer.cols - 1].min
+        buffer.y = [[data["y"].to_i, 0].max, buffer.rows - 1].min
+        buffer.y_base = [buffer.lines.length - buffer.rows, 0].max
+        buffer.y_disp = [[data["y_disp"].to_i, 0].max, buffer.y_base].min
+        buffer.scroll_top = [[data["scroll_top"].to_i, 0].max, buffer.rows - 1].min
+        buffer.scroll_bottom = [[data["scroll_bottom"].to_i, buffer.scroll_top].max, buffer.rows - 1].min
+      end
+
+      def restore_line(data, cols)
+        data = stringify_keys(data)
+        line = Common::BufferLine.new(cols)
+        Array(data["cells"]).first(cols).each_with_index do |cell_data, index|
+          line.set_cell(index, restore_cell(cell_data))
+        end
+        line.is_wrapped = data["wrapped"] == true
+        line
+      end
+
+      def restore_cell(data)
+        data = stringify_keys(data)
+        cell = Common::CellData.new
+        cell.width = data.fetch("width", 1).to_i
+        cell.char = data["char"].to_s
+        cell.fg = data.fetch("fg", 0).to_i
+        cell.bg = data.fetch("bg", 0).to_i
+        cell.link = symbolize_hash(data["link"]) if data["link"]
+        cell
+      end
+
+      def restore_state(data)
+        data = stringify_keys(data)
+        handler = @terminal.internal.input_handler
+        handler.instance_variable_set(:@title, data["title"].to_s)
+        handler.instance_variable_set(:@icon_name, data["icon_name"].to_s)
+        restore_modes(handler, stringify_keys(data["modes"] || {}))
+        restore_cursor_state(handler, data)
+        restore_dynamic_colors(handler.color_manager, stringify_keys(data["dynamic_colors"] || {}))
+      end
+
+      def restore_modes(handler, modes)
+        {
+          "@application_cursor_keys_mode" => "application_cursor_keys_mode",
+          "@application_keypad_mode" => "application_keypad_mode",
+          "@bracketed_paste_mode" => "bracketed_paste_mode",
+          "@cursor_hidden" => "cursor_hidden",
+          "@focus_event_mode" => "focus_event_mode",
+          "@insert_mode" => "insert_mode",
+          "@origin_mode" => "origin_mode",
+          "@reverse_wraparound" => "reverse_wraparound_mode",
+          "@sgr_mouse_mode" => "sgr_mouse_mode",
+          "@urxvt_mouse_mode" => "urxvt_mouse_mode",
+          "@utf8_mouse_mode" => "utf8_mouse_mode",
+          "@autowrap" => "wraparound_mode"
+        }.each do |ivar, key|
+          handler.instance_variable_set(ivar, modes[key] == true)
+        end
+        handler.instance_variable_set(:@mouse_tracking_mode, modes["mouse_tracking_mode"]&.to_sym)
+      end
+
+      def restore_cursor_state(handler, data)
+        handler.instance_variable_set(:@cursor_style, data["cursor_style"].to_s.to_sym)
+        handler.instance_variable_set(:@cursor_blink, data["cursor_blink"] == true)
+      end
+
+      def restore_dynamic_colors(color_manager, data)
+        color_manager.foreground = data["foreground"] if data["foreground"]
+        color_manager.background = data["background"] if data["background"]
+        color_manager.cursor = data["cursor"] if data["cursor"]
+        Array(data["palette"]).each_with_index do |color, index|
+          color_manager.set_ansi_color(index, color) if color
+        end
+      end
 
       def serialize_line(line, result, prev_fg, prev_bg, prev_link)
         line.length.times do |x|
@@ -377,6 +550,37 @@ module RTerm
 
       def escape_html(text)
         CGI.escapeHTML(text)
+      end
+
+      def deep_dup(value)
+        case value
+        when Hash
+          value.each_with_object({}) { |(key, entry), copy| copy[key] = deep_dup(entry) }
+        when Array
+          value.map { |entry| deep_dup(entry) }
+        else
+          value
+        end
+      end
+
+      def stringify_keys(value)
+        return {} unless value.is_a?(Hash)
+
+        value.each_with_object({}) do |(key, entry), result|
+          result[key.to_s] = entry.is_a?(Hash) ? stringify_keys(entry) : entry
+        end
+      end
+
+      def symbolize_hash(value)
+        return value unless value.is_a?(Hash)
+
+        value.each_with_object({}) do |(key, entry), result|
+          result[key.to_sym] = entry.is_a?(Hash) ? symbolize_hash(entry) : entry
+        end
+      end
+
+      def symbolize_image_keys(images)
+        images.map { |image| symbolize_hash(image) }
       end
     end
   end
