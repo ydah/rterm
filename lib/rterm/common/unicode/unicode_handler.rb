@@ -349,9 +349,13 @@ module RTerm
       # @param codepoint [Integer, String] Unicode codepoint or grapheme cluster
       # @return [Integer] 0, 1, or 2
       def char_width(codepoint)
-        return grapheme_width(codepoint) if codepoint.is_a?(String)
-
         provider = @providers.fetch(@active_version)
+        if codepoint.is_a?(String)
+          return provider.grapheme_width(codepoint) if provider.respond_to?(:grapheme_width)
+
+          return grapheme_width(codepoint)
+        end
+
         return provider.char_width(codepoint) if provider.respond_to?(:char_width)
         return provider.call(codepoint) if provider.respond_to?(:call)
 
@@ -395,10 +399,18 @@ module RTerm
         return 0 if codepoints.empty?
 
         base = codepoints.first
+        return 1 if text_variation_sequence?(codepoints)
         return 2 if emoji_variation_sequence?(codepoints)
         return 2 if emoji_zwj_sequence?(codepoints)
+        return 2 if regional_indicator_sequence?(codepoints)
+        return 2 if emoji_modifier_sequence?(codepoints)
+        return 2 if emoji_tag_sequence?(codepoints)
 
         char_width(base)
+      end
+
+      def text_variation_sequence?(codepoints)
+        codepoints.include?(0xFE0E) && in_ranges?(codepoints.first, EMOJI_VARIATION_BASE_RANGES)
       end
 
       def emoji_variation_sequence?(codepoints)
@@ -407,6 +419,21 @@ module RTerm
 
       def emoji_zwj_sequence?(codepoints)
         codepoints.include?(0x200D) && codepoints.any? { |codepoint| is_emoji(codepoint) }
+      end
+
+      def regional_indicator_sequence?(codepoints)
+        codepoints.length == 2 && codepoints.all? { |codepoint| codepoint.between?(0x1F1E6, 0x1F1FF) }
+      end
+
+      def emoji_modifier_sequence?(codepoints)
+        is_emoji(codepoints.first) && codepoints.any? { |codepoint| codepoint.between?(0x1F3FB, 0x1F3FF) }
+      end
+
+      def emoji_tag_sequence?(codepoints)
+        return false unless is_emoji(codepoints.first)
+        return false unless codepoints.last == 0xE007F
+
+        codepoints[1...-1].all? { |codepoint| codepoint.between?(0xE0020, 0xE007E) }
       end
 
       def builtin_char_width(codepoint)
