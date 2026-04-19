@@ -73,6 +73,8 @@ RSpec.describe RTerm::Terminal do
       terminal.write("\e[4h")
       terminal.write("\e[?1h")
       terminal.write("\e[?6h")
+      terminal.write("\e[?12h")
+      terminal.write("\e[?45h")
       terminal.write("\e=")
       terminal.write("\e[?2004h")
 
@@ -80,8 +82,10 @@ RSpec.describe RTerm::Terminal do
         application_cursor_keys_mode: true,
         application_keypad_mode: true,
         bracketed_paste_mode: true,
+        cursor_blink: true,
         insert_mode: true,
         origin_mode: true,
+        reverse_wraparound_mode: true,
         wraparound_mode: true
       )
     end
@@ -93,6 +97,27 @@ RSpec.describe RTerm::Terminal do
       terminal.on(:data) { |data| received = data }
       terminal.input("ls -la\r")
       expect(received).to eq("ls -la\r")
+    end
+
+    it "emits binary input events" do
+      received = nil
+      terminal.on(:binary) { |data| received = data }
+
+      payload = terminal.binary("\xFF".b)
+
+      expect(payload.encoding).to eq(Encoding::BINARY)
+      expect(received).to eq("\xFF".b)
+    end
+
+    it "wraps paste input when bracketed paste mode is enabled" do
+      received = nil
+      terminal.on(:data) { |data| received = data }
+      terminal.write("\e[?2004h")
+
+      payload = terminal.paste("hello\n")
+
+      expect(payload).to eq("\e[200~hello\n\e[201~")
+      expect(received).to eq(payload)
     end
   end
 
@@ -124,6 +149,19 @@ RSpec.describe RTerm::Terminal do
       terminal.on(:bell) { called = true }
       terminal.write("\x07")
       expect(called).to be true
+    end
+  end
+
+  describe "#focus_event" do
+    it "emits focus reports when focus event mode is enabled" do
+      received = nil
+      terminal.on(:data) { |data| received = data }
+      terminal.write("\e[?1004h")
+
+      report = terminal.focus_event(focused: false)
+
+      expect(report).to eq("\e[O")
+      expect(received).to eq(report)
     end
   end
 

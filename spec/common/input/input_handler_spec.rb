@@ -819,6 +819,34 @@ RSpec.describe RTerm::Common::InputHandler do
       end
     end
 
+    describe "cursor blink mode (12)" do
+      it "toggles cursor blink mode" do
+        parse("\e[?12h")
+        expect(handler.cursor_blink).to be true
+
+        parse("\e[?12l")
+        expect(handler.cursor_blink).to be false
+      end
+    end
+
+    describe "reverse wraparound mode (45)" do
+      it "moves back to the previous wrapped row on backspace" do
+        parse("\e[?45h")
+        parse("x" * cols)
+        expect(buffer.x).to eq(cols)
+
+        parse("y")
+        expect(buffer.y).to eq(1)
+        expect(buffer.x).to eq(1)
+
+        buffer.x = 0
+        parse("\b")
+
+        expect(buffer.y).to eq(0)
+        expect(buffer.x).to eq(cols - 1)
+      end
+    end
+
     describe "Bracketed paste mode (2004)" do
       it "enables bracketed paste mode" do
         parse("\e[?2004h")
@@ -904,6 +932,13 @@ RSpec.describe RTerm::Common::InputHandler do
   end
 
   describe "DSR (n) - device status report" do
+    it "emits operating status report for param 5" do
+      response = nil
+      handler.on(:data) { |d| response = d }
+      parse("\e[5n")
+      expect(response).to eq("\e[0n")
+    end
+
     it "emits cursor position report for param 6" do
       buffer.x = 9
       buffer.y = 4
@@ -911,6 +946,31 @@ RSpec.describe RTerm::Common::InputHandler do
       handler.on(:data) { |d| response = d }
       parse("\e[6n")
       expect(response).to eq("\e[5;10R")
+    end
+
+    it "emits DEC extended cursor position report" do
+      buffer.x = 2
+      buffer.y = 1
+      response = nil
+      handler.on(:data) { |d| response = d }
+      parse("\e[?6n")
+      expect(response).to eq("\e[?2;3R")
+    end
+  end
+
+  describe "DA (c) - device attributes" do
+    it "emits primary device attributes" do
+      response = nil
+      handler.on(:data) { |d| response = d }
+      parse("\e[c")
+      expect(response).to eq("\e[?1;2c")
+    end
+
+    it "emits secondary device attributes" do
+      response = nil
+      handler.on(:data) { |d| response = d }
+      parse("\e[>c")
+      expect(response).to eq("\e[>0;276;0c")
     end
   end
 end

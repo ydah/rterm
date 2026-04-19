@@ -47,6 +47,28 @@ module RTerm
 
       scroll_to_bottom if options.scroll_on_user_input
       @terminal.emit(:data, data)
+      data
+    end
+
+    # Simulates binary user input for protocols that bypass UTF-8 text paths.
+    # @param data [String] binary input data
+    # @return [String, nil]
+    def binary(data)
+      return if options.disable_stdin
+
+      payload = data.to_s.b
+      scroll_to_bottom if options.scroll_on_user_input
+      @terminal.emit(:binary, payload)
+      payload
+    end
+
+    # Simulates paste input, honoring bracketed paste mode when enabled.
+    # @param data [String] pasted text
+    # @return [String, nil] emitted payload
+    def paste(data)
+      payload = data.to_s
+      payload = "\e[200~#{payload}\e[201~" if modes[:bracketed_paste_mode]
+      input(payload)
     end
 
     # --- Buffer Access ---
@@ -193,6 +215,13 @@ module RTerm
     # @return [String, nil]
     def mouse_event(**options)
       @terminal.input_handler.mouse_report(**options)
+    end
+
+    # Encodes a focus event according to DEC focus reporting mode.
+    # @param focused [Boolean]
+    # @return [String, nil]
+    def focus_event(focused: true)
+      @terminal.input_handler.focus_report(focused)
     end
 
     # --- Events ---

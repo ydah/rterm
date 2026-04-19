@@ -14,7 +14,7 @@ module RTerm
 
       attr_reader :autowrap, :cursor_hidden, :bracketed_paste_mode, :insert_mode,
                   :origin_mode, :application_cursor_keys_mode, :application_keypad_mode,
-                  :color_manager, :cursor_style
+                  :color_manager, :cursor_style, :cursor_blink, :reverse_wraparound
 
       def initialize(buffer_set, parser, unicode_handler = nil, options = {})
         if unicode_handler.is_a?(Hash)
@@ -28,11 +28,14 @@ module RTerm
         @cur_attr = CellData.new
         @autowrap = true
         @cursor_hidden = false
+        @default_cursor_blink = options[:cursor_blink] == true
+        @cursor_blink = @default_cursor_blink
         @bracketed_paste_mode = false
         @insert_mode = false
         @origin_mode = false
         @application_cursor_keys_mode = false
         @application_keypad_mode = false
+        @reverse_wraparound = false
         @focus_event_mode = false
         @mouse_tracking_mode = nil
         @sgr_mouse_mode = false
@@ -57,11 +60,13 @@ module RTerm
           application_cursor_keys_mode: @application_cursor_keys_mode,
           application_keypad_mode: @application_keypad_mode,
           bracketed_paste_mode: @bracketed_paste_mode,
+          cursor_blink: @cursor_blink,
           cursor_hidden: @cursor_hidden,
           focus_event_mode: @focus_event_mode,
           insert_mode: @insert_mode,
           mouse_tracking_mode: @mouse_tracking_mode,
           origin_mode: @origin_mode,
+          reverse_wraparound_mode: @reverse_wraparound,
           sgr_mouse_mode: @sgr_mouse_mode,
           urxvt_mouse_mode: @urxvt_mouse_mode,
           utf8_mouse_mode: @utf8_mouse_mode,
@@ -87,6 +92,17 @@ module RTerm
                  else
                    x10_mouse_report(code, col, row)
                  end
+        emit(:data, report)
+        report
+      end
+
+      # Encodes and emits a focus event report if DEC focus reporting is enabled.
+      # @param focused [Boolean]
+      # @return [String, nil]
+      def focus_report(focused)
+        return nil unless @focus_event_mode
+
+        report = focused ? "\e[I" : "\e[O"
         emit(:data, report)
         report
       end
@@ -282,9 +298,27 @@ module RTerm
 
         # DSR - Device Status Report
         @parser.set_csi_handler({ final: "n" }) do |params|
-          if params[0] == 6
+          case params[0]
+          when 5
+            emit(:data, "\e[0n")
+          when 6
             emit(:data, "\e[#{buffer.y + 1};#{buffer.x + 1}R")
           end
+        end
+
+        # DECXCPR - DEC extended cursor position report
+        @parser.set_csi_handler({ prefix: "?", final: "n" }) do |params|
+          emit(:data, "\e[?#{buffer.y + 1};#{buffer.x + 1}R") if params[0] == 6
+        end
+
+        # DA - Primary Device Attributes
+        @parser.set_csi_handler({ final: "c" }) do |params|
+          emit(:data, "\e[?1;2c") if params[0].zero?
+        end
+
+        # Secondary DA
+        @parser.set_csi_handler({ prefix: ">", final: "c" }) do
+          emit(:data, "\e[>0;276;0c")
         end
 
         # DECSTBM - Set Scrolling Region
@@ -529,7 +563,23 @@ module RTerm
       # ── Cursor movement helpers ──
 
       def cursor_backward(n)
-        buffer.x = [buffer.x - n, 0].max
+        n.times do
+          if buffer.x.positive?
+            buffer.x -= 1
+          elsif @reverse_wraparound && buffer.y.positive?
+            buffer.y -= 1
+            buffer.x = reverse_wrap_column(buffer.get_line(buffer.y))
+          end
+        end
+      end
+
+      def reverse_wrap_column(line)
+        return buffer.cols - 1 if line&.is_wrapped
+
+        trimmed = line&.get_trimmed_length.to_i
+        return buffer.cols - 1 if trimmed.zero?
+
+        [[trimmed - 1, 0].max, buffer.cols - 1].min
       end
 
       def tab(count = 1)
@@ -800,8 +850,12 @@ module RTerm
           reset_cursor_to_home
         when 7
           @autowrap = true
+        when 12
+          @cursor_blink = true
         when 25
           @cursor_hidden = false
+        when 45
+          @reverse_wraparound = true
         when 66
           @application_keypad_mode = true
         when 9
@@ -841,8 +895,12 @@ module RTerm
           reset_cursor_to_home
         when 7
           @autowrap = false
+        when 12
+          @cursor_blink = false
         when 25
           @cursor_hidden = true
+        when 45
+          @reverse_wraparound = false
         when 66
           @application_keypad_mode = false
         when 9, 1000, 1002, 1003
@@ -878,12 +936,14 @@ module RTerm
         @cur_attr = CellData.new
         @autowrap = true
         @cursor_hidden = false
+        @cursor_blink = @default_cursor_blink
         @cursor_style = @default_cursor_style
         @bracketed_paste_mode = false
         @insert_mode = false
         @origin_mode = false
         @application_cursor_keys_mode = false
         @application_keypad_mode = false
+        @reverse_wraparound = false
         @focus_event_mode = false
         @mouse_tracking_mode = nil
         @sgr_mouse_mode = false
