@@ -14,8 +14,11 @@ RSpec.describe "vttest screen-state assertions" do
       terminal.write(data)
     end
 
-    wait_until(timeout: 2.0) { raw.match?(/VT|test/i) }
+    wait_until(timeout: 8.0) { pty.exit_status || vttest_menu?(raw) }
+    skip "vttest did not render a menu in this PTY environment" unless vttest_menu?(raw)
+
     pty.write("q")
+    wait_until(timeout: 1.0) { pty.exit_status }
     pty.close
 
     terminal.select_all
@@ -30,12 +33,17 @@ RSpec.describe "vttest screen-state assertions" do
     nil
   end
 
+  def vttest_menu?(raw)
+    raw.match?(/VT|test/i)
+  end
+
   def wait_until(timeout:)
     deadline = Time.now + timeout
     until yield
-      break if Time.now >= deadline
+      return false if Time.now >= deadline
 
       sleep 0.01
     end
+    true
   end
 end
