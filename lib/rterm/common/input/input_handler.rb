@@ -1363,7 +1363,9 @@ module RTerm
           selection: selection,
           selections: clipboard_selections(selection),
           data: encoded,
-          decoded: decoded
+          decoded: decoded,
+          multipart: multipart_clipboard_data?(encoded),
+          chunks: clipboard_data_chunks(encoded)
         }
         allowed, reason = clipboard_write_allowed?(payload)
         payload[:allowed] = allowed
@@ -1426,11 +1428,26 @@ module RTerm
 
       def decode_clipboard_data(encoded)
         return "" if encoded.empty?
-        return nil unless encoded.match?(/\A[A-Za-z0-9+\/]*={0,2}\z/) && (encoded.length % 4).zero?
 
-        encoded.unpack1("m0").force_encoding("UTF-8").scrub
+        parts = encoded.split(";", -1)
+        return nil if parts.any?(&:empty?)
+
+        joined = parts.join
+        return nil unless joined.match?(/\A[A-Za-z0-9+\/]*={0,2}\z/) && (joined.length % 4).zero?
+
+        joined.unpack1("m0").force_encoding("UTF-8").scrub
       rescue ArgumentError
         nil
+      end
+
+      def multipart_clipboard_data?(encoded)
+        encoded.include?(";")
+      end
+
+      def clipboard_data_chunks(encoded)
+        return 1 if encoded.empty?
+
+        encoded.split(";", -1).length
       end
 
       def encode_clipboard_data(value)
