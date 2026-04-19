@@ -14,6 +14,7 @@ module RTerm
       def initialize(max_sessions: 10, default_command: nil, terminal_options: {},
                      session_timeout: nil, idle_timeout: nil, authenticator: nil,
                      output_queue_limit: 1_048_576, auto_flush_output: true,
+                     max_message_bytes: nil, rate_limit: nil, heartbeat_timeout: nil,
                      clock: -> { Time.now })
         @sessions = {}
         @max_sessions = max_sessions
@@ -24,9 +25,13 @@ module RTerm
         @authenticator = authenticator
         @output_queue_limit = output_queue_limit
         @auto_flush_output = auto_flush_output
+        @max_message_bytes = max_message_bytes
+        @rate_limit = rate_limit
+        @heartbeat_timeout = heartbeat_timeout
         @clock = clock
         @output_callbacks = []
         @exit_callbacks = []
+        @message_history = Hash.new { |hash, key| hash[key] = [] }
       end
 
       # Creates a new terminal session.
@@ -54,6 +59,7 @@ module RTerm
           pty: pty,
           created_at: now,
           last_activity_at: now,
+          last_heartbeat_at: now,
           output_queue: [],
           queued_output_bytes: 0
         }
@@ -158,7 +164,9 @@ module RTerm
       # @param message [Hash] decoded protocol message
       # @return [String, nil] response message (JSON) or nil
       def process_message(message)
-        return ProtocolHandler.error("Unauthorized") unless authorized?(message)
+        return ProtocolHandler.error("Unauthorized", code: "unauthorized") unless authorized?(message)
+        return ProtocolHandler.error("Message too large", code: "message_too_large") if message_too_large?(message)
+        return ProtocolHandler.error("Rate limit exceeded", code: "rate_limited") if rate_limited?(message)
 
         cleanup_expired
         case message[:type]
@@ -168,6 +176,7 @@ module RTerm
             command: payload['command'],
             args: payload['args'] || [],
             env: payload['env'] || {},
+            cwd: payload['cwd'],
             cols: payload['cols'] || 80,
             rows: payload['rows'] || 24
           )
@@ -190,13 +199,14 @@ module RTerm
           nil
 
         when ProtocolHandler::MessageType::PING
+          heartbeat(message[:session_id]) if message[:session_id]
           ProtocolHandler.pong
 
         else
-          ProtocolHandler.error("Unknown message type: #{message[:type]}")
+          ProtocolHandler.error("Unknown message type: #{message[:type]}", code: "unknown_message_type")
         end
       rescue SessionError => e
-        ProtocolHandler.error(e.message, session_id: message[:session_id])
+        ProtocolHandler.error(e.message, session_id: message[:session_id], code: "session_error")
       end
 
       # @return [Integer] current number of active sessions
@@ -237,7 +247,35 @@ module RTerm
         current = now
         return true if @session_timeout && current - session[:created_at] > @session_timeout
         return true if @idle_timeout && current - session[:last_activity_at] > @idle_timeout
+        return true if @heartbeat_timeout && current - session[:last_heartbeat_at] > @heartbeat_timeout
 
+        false
+      end
+
+      def heartbeat(session_id)
+        session = get_session(session_id)
+        session[:last_heartbeat_at] = now
+        touch(session)
+      end
+
+      def message_too_large?(message)
+        return false unless @max_message_bytes
+
+        message.to_s.bytesize > @max_message_bytes
+      end
+
+      def rate_limited?(message)
+        return false unless @rate_limit
+
+        limit = @rate_limit.fetch(:limit)
+        interval = @rate_limit.fetch(:interval)
+        key = message[:session_id] || :global
+        current = now
+        history = @message_history[key]
+        history.reject! { |timestamp| current - timestamp > interval }
+        return true if history.length >= limit
+
+        history << current
         false
       end
 
@@ -264,6 +302,7 @@ module RTerm
           command: command,
           args: options.fetch(:args, []),
           env: options.fetch(:env, {}),
+          cwd: options[:cwd],
           cols: cols,
           rows: rows
         )

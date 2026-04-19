@@ -139,8 +139,10 @@ module RTerm
         encode(MessageType::PONG)
       end
 
-      def self.error(message, session_id: nil)
-        encode(MessageType::ERROR, session_id: session_id, payload: { 'message' => message })
+      def self.error(message, session_id: nil, code: nil)
+        payload = { 'message' => message }
+        payload['code'] = code if code
+        encode(MessageType::ERROR, session_id: session_id, payload: payload)
       end
 
       def self.decode_binary_session_id(bytes)

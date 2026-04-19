@@ -80,10 +80,11 @@ RSpec.describe RTerm::BrowserBridge::ProtocolHandler do
     end
 
     it '.error creates error message' do
-      json = described_class.error('something went wrong', session_id: 's1')
+      json = described_class.error('something went wrong', session_id: 's1', code: 'boom')
       msg = JSON.parse(json)
       expect(msg['type']).to eq('error')
       expect(msg['payload']['message']).to eq('something went wrong')
+      expect(msg['payload']['code']).to eq('boom')
     end
   end
 
@@ -306,6 +307,44 @@ RSpec.describe RTerm::BrowserBridge::SessionManager do
 
       expect(parsed['type']).to eq('error')
       expect(parsed['payload']['message']).to include('Unauthorized')
+      expect(parsed['payload']['code']).to eq('unauthorized')
+    end
+
+    it 'rejects oversized messages' do
+      limited = described_class.new(max_message_bytes: 20)
+      msg = { type: 'input', session_id: 'abc', payload: { 'data' => 'x' * 50 } }
+
+      response = limited.process_message(msg)
+      parsed = JSON.parse(response)
+
+      expect(parsed['payload']['code']).to eq('message_too_large')
+    end
+
+    it 'rate limits messages' do
+      now = Time.at(100)
+      limited = described_class.new(rate_limit: { limit: 1, interval: 10 }, clock: -> { now })
+      msg = { type: 'ping', session_id: nil, payload: {} }
+
+      expect(JSON.parse(limited.process_message(msg))['type']).to eq('pong')
+      response = limited.process_message(msg)
+
+      expect(JSON.parse(response)['payload']['code']).to eq('rate_limited')
+    end
+
+    it 'expires sessions that miss heartbeats' do
+      now = Time.at(100)
+      timed = described_class.new(heartbeat_timeout: 10, clock: -> { now })
+      id = timed.create_session
+
+      now = Time.at(105)
+      timed.process_message(type: 'ping', session_id: id, payload: {})
+      now = Time.at(112)
+      timed.cleanup_expired
+      expect(timed.session_exists?(id)).to be true
+
+      now = Time.at(116)
+      timed.cleanup_expired
+      expect(timed.session_exists?(id)).to be false
     end
   end
 
