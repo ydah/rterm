@@ -19,6 +19,20 @@ RSpec.describe RTerm::Common::UnicodeV15 do
 end
 
 RSpec.describe RTerm::Common::UnicodeHandler do
+  def unicode_width_version_fixtures
+    fixture = File.expand_path("../../fixtures/unicode_width_versions.tsv", __dir__)
+    File.readlines(fixture, chomp: true).filter_map do |line|
+      next if line.empty? || line.start_with?("#")
+
+      codepoint, v6, v11, v15, label = line.split("\t")
+      {
+        codepoint: codepoint.to_i(16),
+        expected: { "6" => v6.to_i, "11" => v11.to_i, "15" => v15.to_i },
+        label: label
+      }
+    end
+  end
+
   it "provides specification aliases and helpers" do
     handler = described_class.new
 
@@ -49,6 +63,17 @@ RSpec.describe RTerm::Common::UnicodeHandler do
 
     handler.active_version = "15"
     expect(handler.char_width(0x1FAE0)).to eq(2)
+  end
+
+  it "matches fixture coverage for Unicode V6, V11, and V15 width differences" do
+    handler = described_class.new
+
+    unicode_width_version_fixtures.each do |fixture|
+      fixture[:expected].each do |version, width|
+        handler.active_version = version
+        expect(handler.char_width(fixture[:codepoint])).to eq(width), "#{fixture[:label]} should be width #{width} in Unicode #{version}"
+      end
+    end
   end
 
   it "measures emoji variation sequences as wide grapheme clusters" do

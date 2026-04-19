@@ -118,6 +118,33 @@ RSpec.describe RTerm::Common::InputHandler do
       expect(buffer.y).to eq(0)
       expect(buffer.x).to eq(cols - 1)
     end
+
+    context "with pending wrap state" do
+      let(:cols) { 5 }
+      let(:rows) { 2 }
+
+      it "marks the row wrapped only when the next printable character arrives" do
+        parse("abcde")
+
+        expect(buffer.x).to eq(5)
+        expect(buffer.get_line(0).is_wrapped).to be false
+
+        parse("F")
+
+        expect(buffer.get_line(0).is_wrapped).to be true
+        expect(buffer.y).to eq(1)
+        expect(line_text(1)).to eq("F")
+      end
+
+      it "does not mark the row wrapped if cursor movement cancels the pending wrap" do
+        parse("abcde")
+        parse("\bZ")
+
+        expect(buffer.get_line(0).is_wrapped).to be false
+        expect(buffer.y).to eq(0)
+        expect(line_text(0)).to eq("abcdZ")
+      end
+    end
   end
 
   describe "C0 control characters" do
