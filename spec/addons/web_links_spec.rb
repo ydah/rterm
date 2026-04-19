@@ -68,4 +68,60 @@ RSpec.describe RTerm::Addon::WebLinks do
     expect(links.map { |link| link[:url] }).to eq(["https://example.org"])
     expect(yielded).to eq(links)
   end
+
+  it "supports async provider callbacks" do
+    terminal.write("run printf")
+    addon.register_link_provider do |text, _row, request, callback|
+      callback.call([{ url: "man://printf", start: text.index("printf"), length: 6 }]) unless request.cancelled?
+    end
+    yielded = nil
+
+    disposable = addon.provide_links_async(0) { |links| yielded = links }
+
+    expect(disposable).to respond_to(:dispose)
+    expect(yielded.first).to include(url: "man://printf", row: 0, col: 4, length: 6)
+  end
+
+  it "cancels pending async provider callbacks" do
+    pending_callback = nil
+    terminal.write("run printf")
+    addon.register_link_provider do |text, _row, _request, callback|
+      pending_callback = -> { callback.call([{ url: "man://printf", start: text.index("printf"), length: 6 }]) }
+    end
+    yielded = []
+
+    disposable = addon.provide_links_async(0) { |links| yielded << links }
+    disposable.dispose
+    pending_callback.call
+
+    expect(yielded).to be_empty
+  end
+
+  it "emits hover, leave, and activate lifecycle events" do
+    callbacks = []
+    events = []
+    terminal.on(:web_link_hover) { |link| events << [:hover, link[:url]] }
+    terminal.on(:web_link_leave) { |link| events << [:leave, link[:url]] }
+    terminal.on(:web_link_activate) { |link| events << [:activate, link[:url]] }
+    addon.register_link_provider do |text, _row|
+      start = text.index("docs")
+      [{
+        url: "help://docs",
+        start: start,
+        length: 4,
+        hover: ->(link) { callbacks << [:hover, link[:url]] },
+        leave: ->(link) { callbacks << [:leave, link[:url]] },
+        activate: ->(link) { callbacks << [:activate, link[:url]] }
+      }]
+    end
+    terminal.write("see docs")
+    link = addon.find_links.first
+
+    expect(addon.hover_link(row: 0, col: 4)).to be true
+    expect(addon.leave_link(link)).to be true
+    expect(addon.open_link(link)).to be true
+
+    expect(callbacks).to eq([[:hover, "help://docs"], [:leave, "help://docs"], [:activate, "help://docs"]])
+    expect(events).to eq(callbacks)
+  end
 end
