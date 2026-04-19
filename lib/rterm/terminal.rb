@@ -123,6 +123,11 @@ module RTerm
       @terminal.input_handler.icon_name
     end
 
+    # @return [Array<Hash>] image payloads placed by Sixel/iTerm2 protocols
+    def images
+      @terminal.input_handler.images
+    end
+
     # --- Buffer Operations ---
 
     # Clears the terminal buffer.

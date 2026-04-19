@@ -5,6 +5,7 @@ require_relative "../buffer/constants"
 require_relative "../buffer/cell_data"
 require_relative "../charset/charsets"
 require_relative "../color/color_manager"
+require_relative "../image/sixel_parser"
 
 module RTerm
   module Common
@@ -15,7 +16,7 @@ module RTerm
       attr_reader :autowrap, :cursor_hidden, :bracketed_paste_mode, :insert_mode,
                   :origin_mode, :application_cursor_keys_mode, :application_keypad_mode,
                   :color_manager, :cursor_style, :cursor_blink, :reverse_wraparound,
-                  :title, :icon_name
+                  :title, :icon_name, :images
 
       def initialize(buffer_set, parser, unicode_handler = nil, options = {})
         if unicode_handler.is_a?(Hash)
@@ -49,6 +50,7 @@ module RTerm
         @default_cursor_style = options[:cursor_style] || :block
         @cursor_style = @default_cursor_style
         @clipboard = {}
+        @images = []
         @title = ""
         @icon_name = ""
         @current_link = nil
@@ -640,7 +642,9 @@ module RTerm
         end
 
         @parser.set_dcs_handler({ final: "q" }) do |data, params|
-          emit(:image, { protocol: :sixel, params: dcs_params_array(params), data: data })
+          sixel_params = dcs_params_array(params)
+          payload = SixelParser.parse(data, params: sixel_params)
+          record_image(payload, raw_sequence: sixel_sequence(sixel_params, data))
         end
       end
 
@@ -1235,6 +1239,7 @@ module RTerm
         @color_manager.reset_defaults
         @color_manager.reset_ansi_color
         @clipboard.clear
+        @images.clear
         @title = ""
         @icon_name = ""
         @current_link = nil
@@ -1369,7 +1374,43 @@ module RTerm
         header, encoded = data.split(":", 2)
         return unless header&.start_with?("File=")
 
-        emit(:image, { protocol: :iterm2, params: header.delete_prefix("File="), data: encoded || "" })
+        params = header.delete_prefix("File=")
+        record_image(
+          {
+            protocol: :iterm2,
+            params: params,
+            attributes: parse_iterm2_attributes(params),
+            data: encoded || ""
+          },
+          raw_sequence: "\e]1337;File=#{params}:#{encoded || ""}\a"
+        )
+      end
+
+      def record_image(payload, raw_sequence:)
+        image = payload.merge(
+          placement: {
+            buffer: @buffer_set.active.equal?(@buffer_set.alt) ? :alt : :normal,
+            row: buffer.y_base + buffer.y,
+            col: buffer.x
+          },
+          raw_sequence: raw_sequence
+        )
+        @images << image
+        emit(:image, image)
+      end
+
+      def sixel_sequence(params, data)
+        prefix = params.empty? ? "" : params.join(";")
+        "\eP#{prefix}q#{data}\e\\"
+      end
+
+      def parse_iterm2_attributes(params)
+        params.to_s.split(";").each_with_object({}) do |part, attrs|
+          key, value = part.split("=", 2)
+          next if key.to_s.empty?
+
+          attrs[key] = value || ""
+        end
       end
 
       def dcs_params_array(params)

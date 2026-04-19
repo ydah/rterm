@@ -58,7 +58,15 @@ RSpec.describe "DCS and OSC enhanced handling" do
 
     terminal.write("\ePqABCDEF\e\\")
 
-    expect(image).to eq({ protocol: :sixel, params: [], data: "ABCDEF" })
+    expect(image).to include(
+      protocol: :sixel,
+      params: [],
+      data: "ABCDEF",
+      geometry: { cell_width: 6, pixel_height: 6 },
+      placement: { buffer: :normal, row: 0, col: 0 },
+      raw_sequence: "\ePqABCDEF\e\\"
+    )
+    expect(terminal.images).to include(image)
   end
 
   it "emits iTerm2 image payloads" do
@@ -67,6 +75,13 @@ RSpec.describe "DCS and OSC enhanced handling" do
 
     terminal.write("\e]1337;File=name=test.png;inline=1:AAAA\a")
 
-    expect(image).to eq({ protocol: :iterm2, params: "name=test.png;inline=1", data: "AAAA" })
+    expect(image).to include(
+      protocol: :iterm2,
+      params: "name=test.png;inline=1",
+      attributes: { "name" => "test.png", "inline" => "1" },
+      data: "AAAA",
+      placement: { buffer: :normal, row: 0, col: 0 },
+      raw_sequence: "\e]1337;File=name=test.png;inline=1:AAAA\a"
+    )
   end
 end

@@ -136,6 +136,19 @@ RSpec.describe RTerm::Addon::Serialize do
       expect(link).to eq({ params: "id=1", uri: "https://example.com" })
     end
 
+    it "serializes image protocol payloads" do
+      terminal.write("\ePqABCDEF\e\\")
+      terminal.write("\e]1337;File=name=test.png;inline=1:AAAA\a")
+
+      serialized = serializer.serialize
+      replayed = RTerm::Terminal.new(cols: 80, rows: 24)
+      replayed.write(serialized)
+
+      expect(serialized).to include("\ePqABCDEF\e\\")
+      expect(serialized).to include("\e]1337;File=name=test.png;inline=1:AAAA\a")
+      expect(replayed.images.map { |image| image[:protocol] }).to include(:sixel, :iterm2)
+    end
+
     it "can serialize normal and alternate buffers together" do
       terminal.write("normal")
       terminal.write("\e[?1049h")
