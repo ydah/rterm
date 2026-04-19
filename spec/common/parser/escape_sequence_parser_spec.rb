@@ -164,6 +164,92 @@ RSpec.describe RTerm::Common::EscapeSequenceParser do
     end
   end
 
+  describe "string controls" do
+    it "parses APC strings with ST terminator" do
+      received = nil
+      parser.set_apc_handler { |data| received = data }
+
+      parser.parse("\e_payload\e\\")
+
+      expect(received).to eq("payload")
+    end
+
+    it "parses PM strings with ST terminator" do
+      received = nil
+      parser.set_pm_handler { |data| received = data }
+
+      parser.parse("\e^privacy message\e\\")
+
+      expect(received).to eq("privacy message")
+    end
+
+    it "parses SOS strings with ST terminator" do
+      received = nil
+      parser.set_sos_handler { |data| received = data }
+
+      parser.parse("\eXstart of string\e\\")
+
+      expect(received).to eq("start of string")
+    end
+  end
+
+  describe "8-bit C1 controls" do
+    def c1(code)
+      code.chr(Encoding::UTF_8)
+    end
+
+    it "parses C1 CSI" do
+      received_params = nil
+      parser.set_csi_handler({ final: "m" }) do |params|
+        received_params = params.to_array
+        true
+      end
+
+      parser.parse("#{c1(0x9B)}31m")
+
+      expect(received_params).to eq([31])
+    end
+
+    it "parses C1 OSC" do
+      received = nil
+      parser.set_osc_handler(2) { |data| received = data }
+
+      parser.parse("#{c1(0x9D)}2;Window#{c1(0x9C)}")
+
+      expect(received).to eq("Window")
+    end
+
+    it "parses C1 DCS" do
+      received = nil
+      parser.set_dcs_handler({ final: "q" }) { |data, _params| received = data }
+
+      parser.parse("#{c1(0x90)}qDATA#{c1(0x9C)}")
+
+      expect(received).to eq("DATA")
+    end
+
+    it "parses C1 APC" do
+      received = nil
+      parser.set_apc_handler { |data| received = data }
+
+      parser.parse("#{c1(0x9F)}payload#{c1(0x9C)}")
+
+      expect(received).to eq("payload")
+    end
+
+    it "parses C1 PM and SOS" do
+      pm = nil
+      sos = nil
+      parser.set_pm_handler { |data| pm = data }
+      parser.set_sos_handler { |data| sos = data }
+
+      parser.parse("#{c1(0x9E)}pm#{c1(0x9C)}#{c1(0x98)}sos#{c1(0x9C)}")
+
+      expect(pm).to eq("pm")
+      expect(sos).to eq("sos")
+    end
+  end
+
   describe "invalid sequences" do
     it "returns to GROUND on invalid sequences" do
       printed = nil

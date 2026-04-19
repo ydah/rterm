@@ -31,6 +31,9 @@ module RTerm
         @esc_handlers = {}
         @osc_handlers = {}
         @dcs_handlers = {}
+        @apc_handlers = []
+        @pm_handlers = []
+        @sos_handlers = []
 
         # Fallback handlers
         @print_handler_fb = nil
@@ -42,6 +45,9 @@ module RTerm
         @osc_data = +""
         @osc_id = -1
         @dcs_data = +""
+        @apc_data = +""
+        @sos_pm_data = +""
+        @sos_pm_kind = nil
       end
 
       # --- Handler Registration ---
@@ -98,6 +104,30 @@ module RTerm
         @dcs_handlers[ident] ||= []
         @dcs_handlers[ident] << handler
         Disposable.new { @dcs_handlers[ident]&.delete(handler) }
+      end
+
+      # Registers an APC string handler.
+      # @yield [String] the APC payload
+      # @return [Disposable]
+      def set_apc_handler(&handler)
+        @apc_handlers << handler
+        Disposable.new { @apc_handlers.delete(handler) }
+      end
+
+      # Registers a PM string handler.
+      # @yield [String] the PM payload
+      # @return [Disposable]
+      def set_pm_handler(&handler)
+        @pm_handlers << handler
+        Disposable.new { @pm_handlers.delete(handler) }
+      end
+
+      # Registers a SOS string handler.
+      # @yield [String] the SOS payload
+      # @return [Disposable]
+      def set_sos_handler(&handler)
+        @sos_handlers << handler
+        Disposable.new { @sos_handlers.delete(handler) }
       end
 
       # --- Parsing ---
@@ -252,9 +282,44 @@ module RTerm
 
           when ParserAction::DCS_UNHOOK
             dispatch_dcs
+
+          when ParserAction::APC_START
+            @apc_data = +""
+
+          when ParserAction::APC_PUT
+            start_pos = i
+            i += 1
+            while i < length
+              c = codepoints[i]
+              break if c < 0x20 || (c >= 0x7F && c < NON_ASCII_PRINTABLE)
+
+              i += 1
+            end
+            @apc_data << codepoints[start_pos...i].pack("U*")
+            i -= 1
+
+          when ParserAction::SOS_START
+            @sos_pm_kind = :sos
+            @sos_pm_data = +""
+
+          when ParserAction::PM_START
+            @sos_pm_kind = :pm
+            @sos_pm_data = +""
+
+          when ParserAction::SOS_PM_PUT
+            start_pos = i
+            i += 1
+            while i < length
+              c = codepoints[i]
+              break if c < 0x20 || (c >= 0x7F && c < NON_ASCII_PRINTABLE)
+
+              i += 1
+            end
+            @sos_pm_data << codepoints[start_pos...i].pack("U*")
+            i -= 1
           end
 
-          # Dispatch pending OSC/DCS when leaving those states
+          # Dispatch pending string controls when leaving those states.
           if @current_state == OSC_STRING && next_state != OSC_STRING && action != ParserAction::OSC_END
             dispatch_osc(code)
           end
@@ -263,6 +328,10 @@ module RTerm
              action != ParserAction::DCS_UNHOOK
             dispatch_dcs
           end
+
+          dispatch_apc if @current_state == APC_STRING && next_state != APC_STRING
+
+          dispatch_sos_pm if @current_state == SOS_PM_STRING && next_state != SOS_PM_STRING
 
           @current_state = next_state
           i += 1
@@ -277,6 +346,9 @@ module RTerm
         @osc_data = +""
         @osc_id = -1
         @dcs_data = +""
+        @apc_data = +""
+        @sos_pm_data = +""
+        @sos_pm_kind = nil
       end
 
       # @return [Integer] the current parser state
@@ -310,6 +382,19 @@ module RTerm
 
         (handlers.length - 1).downto(0) do |j|
           handlers[j].call(@dcs_data, @params)
+        end
+      end
+
+      def dispatch_apc
+        (@apc_handlers.length - 1).downto(0) do |j|
+          @apc_handlers[j].call(@apc_data)
+        end
+      end
+
+      def dispatch_sos_pm
+        handlers = @sos_pm_kind == :pm ? @pm_handlers : @sos_handlers
+        (handlers.length - 1).downto(0) do |j|
+          handlers[j].call(@sos_pm_data)
         end
       end
 
@@ -363,13 +448,13 @@ module RTerm
           (0x80..0x8F).each { |c| set.call(state, c, ParserAction::EXECUTE, GROUND) }
           set.call(state, 0x90, ParserAction::CLEAR, DCS_ENTRY)
           (0x91..0x97).each { |c| set.call(state, c, ParserAction::EXECUTE, GROUND) }
-          set.call(state, 0x98, ParserAction::IGNORE, SOS_PM_STRING)
+          set.call(state, 0x98, ParserAction::SOS_START, SOS_PM_STRING)
           set.call(state, 0x99, ParserAction::EXECUTE, GROUND)
           set.call(state, 0x9A, ParserAction::EXECUTE, GROUND)
           set.call(state, 0x9B, ParserAction::CLEAR, CSI_ENTRY)
           set.call(state, 0x9C, ParserAction::IGNORE, GROUND)
           set.call(state, 0x9D, ParserAction::OSC_START, OSC_STRING)
-          set.call(state, 0x9E, ParserAction::IGNORE, SOS_PM_STRING)
+          set.call(state, 0x9E, ParserAction::PM_START, SOS_PM_STRING)
           set.call(state, 0x9F, ParserAction::APC_START, APC_STRING)
         end
 
@@ -384,8 +469,8 @@ module RTerm
         set.call(ESCAPE, 0x5B, ParserAction::CLEAR, CSI_ENTRY)       # '['
         set.call(ESCAPE, 0x5D, ParserAction::OSC_START, OSC_STRING)  # ']'
         set.call(ESCAPE, 0x50, ParserAction::CLEAR, DCS_ENTRY)       # 'P'
-        set.call(ESCAPE, 0x58, ParserAction::IGNORE, SOS_PM_STRING)  # 'X'
-        set.call(ESCAPE, 0x5E, ParserAction::IGNORE, SOS_PM_STRING)  # '^'
+        set.call(ESCAPE, 0x58, ParserAction::SOS_START, SOS_PM_STRING)  # 'X'
+        set.call(ESCAPE, 0x5E, ParserAction::PM_START, SOS_PM_STRING)   # '^'
         set.call(ESCAPE, 0x5F, ParserAction::APC_START, APC_STRING)  # '_'
         (0x20..0x2F).each { |c| set.call(ESCAPE, c, ParserAction::COLLECT, ESCAPE_INTERMEDIATE) }
         (0x30..0x4F).each { |c| set.call(ESCAPE, c, ParserAction::ESC_DISPATCH, GROUND) }
@@ -477,8 +562,9 @@ module RTerm
 
         # --- SOS_PM_STRING ---
         executables.each { |c| set.call(SOS_PM_STRING, c, ParserAction::IGNORE, SOS_PM_STRING) }
-        (0x20..0x7F).each { |c| set.call(SOS_PM_STRING, c, ParserAction::IGNORE, SOS_PM_STRING) }
-        set.call(SOS_PM_STRING, NON_ASCII_PRINTABLE, ParserAction::IGNORE, SOS_PM_STRING)
+        (0x20..0x7E).each { |c| set.call(SOS_PM_STRING, c, ParserAction::SOS_PM_PUT, SOS_PM_STRING) }
+        set.call(SOS_PM_STRING, 0x7F, ParserAction::IGNORE, SOS_PM_STRING)
+        set.call(SOS_PM_STRING, NON_ASCII_PRINTABLE, ParserAction::SOS_PM_PUT, SOS_PM_STRING)
 
         # --- APC_STRING ---
         executables.each { |c| set.call(APC_STRING, c, ParserAction::IGNORE, APC_STRING) }

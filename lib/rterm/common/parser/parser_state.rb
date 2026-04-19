@@ -42,6 +42,9 @@ module RTerm
       APC_START    = 15
       APC_PUT      = 16
       APC_END      = 17
+      SOS_START    = 18
+      PM_START     = 19
+      SOS_PM_PUT   = 20
     end
   end
 end
