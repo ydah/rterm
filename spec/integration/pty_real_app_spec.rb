@@ -14,8 +14,7 @@ RSpec.describe "PTY real application integration" do
   end
 
   it "runs vim through a PTY when available" do
-    vim = command_path("vim")
-    skip "vim not installed" unless vim
+    vim = required_command("vim")
 
     _terminal, _raw, status = run_pty_app(
       vim,
@@ -27,8 +26,7 @@ RSpec.describe "PTY real application integration" do
   end
 
   it "runs tmux through a PTY when available" do
-    tmux = command_path("tmux")
-    skip "tmux not installed" unless tmux
+    tmux = required_command("tmux")
 
     socket = "rterm-test-#{Process.pid}-#{rand(10_000)}"
     _terminal, _raw, status = run_pty_app(
@@ -41,8 +39,7 @@ RSpec.describe "PTY real application integration" do
   end
 
   it "starts vttest through a PTY when available" do
-    vttest = command_path("vttest")
-    skip "vttest not installed" unless vttest
+    vttest = required_command("vttest")
 
     _terminal, raw, _status = run_pty_app(vttest, [], input: ["q"], timeout: 2.0)
 
@@ -86,5 +83,15 @@ RSpec.describe "PTY real application integration" do
       return path if File.executable?(path) && !File.directory?(path)
     end
     nil
+  end
+
+  def required_command(command)
+    path = command_path(command)
+    return path if path
+
+    message = "#{command} not installed"
+    raise message if ENV["CI"] || ENV["RTERM_STRICT_E2E"] == "1"
+
+    skip message
   end
 end
