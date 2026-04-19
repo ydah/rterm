@@ -3,6 +3,9 @@
 require_relative "event_emitter"
 require_relative "../terminal_options"
 require_relative "../service_container"
+require_relative "../services/log_service"
+require_relative "../services/char_size_service"
+require_relative "../services/osc_link_service"
 require_relative "buffer/buffer_set"
 require_relative "parser/escape_sequence_parser"
 require_relative "input/text_decoder"
@@ -51,6 +54,7 @@ module RTerm
       def write(data)
         data = data.to_s.gsub(/\r?\n/, "\r\n") if @options.convert_eol
         @write_buffer.write(data)
+        emit_line_update(data)
         emit(:write_parsed)
       end
 
@@ -93,9 +97,13 @@ module RTerm
         @services.register(Services::OPTIONS_SERVICE, @options)
         @services.register(Services::UNICODE_SERVICE, @unicode_handler)
         @services.register(Services::CORE_SERVICE, self)
+        @services.register(Services::LOG_SERVICE, Services::LogService.new(level: @options.log_level))
+        @services.register(Services::CHAR_SIZE_SERVICE, Services::CharSizeService.new)
+        @services.register(Services::OSC_LINK_SERVICE, Services::OscLinkService.new)
       end
 
       def wire_events
+        osc_link_service = @services.get(Services::OSC_LINK_SERVICE)
         # Forward input handler events
         @input_handler.on(:bell) { emit(:bell) }
         @input_handler.on(:title_change) { |title| emit(:title_change, title) }
@@ -104,10 +112,23 @@ module RTerm
         @input_handler.on(:cursor_move) { emit(:cursor_move) }
         @input_handler.on(:line_feed) { emit(:line_feed) }
         @input_handler.on(:data) { |data| emit(:data, data) }
-        @input_handler.on(:hyperlink) { |payload| emit(:hyperlink, payload) }
+        @input_handler.on(:hyperlink) do |payload|
+          osc_link_service.update(payload)
+          emit(:hyperlink, payload)
+        end
         @input_handler.on(:clipboard) { |payload| emit(:clipboard, payload) }
         @input_handler.on(:clipboard_request) { |payload| emit(:clipboard_request, payload) }
         @input_handler.on(:image) { |payload| emit(:image, payload) }
+      end
+
+      def emit_line_update(raw)
+        payload = {
+          row: @buffer_set.active.y,
+          text: raw.to_s.gsub(/\e(?:\[[0-?]*[ -\/]*[@-~]|\][^\a]*(?:\a|\e\\)|P.*?\e\\)/m, ""),
+          raw: raw.to_s
+        }
+        emit(:line_update, payload)
+        emit(:screen_reader, payload) if @options.screen_reader_mode
       end
     end
   end

@@ -63,11 +63,57 @@ RSpec.describe "terminal selection API" do
     expect(terminal.selection).to eq("def")
   end
 
+  it "uses double-click and triple-click selection boundaries" do
+    terminal.write("abc def")
+
+    terminal.select_click(5, 0, click_count: 2)
+    expect(terminal.selection).to eq("def")
+
+    terminal.select_click(5, 0, click_count: 3)
+    expect(terminal.selection).to eq("abc def")
+  end
+
+  it "selects URLs without trailing punctuation" do
+    terminal.write("open https://example.com/path.")
+
+    terminal.select_url(8, 0)
+
+    expect(terminal.selection).to eq("https://example.com/path")
+  end
+
+  it "supports right-click word selection when enabled" do
+    right_click_terminal = RTerm::Terminal.new(cols: 10, rows: 3, right_click_selects_word: true)
+    right_click_terminal.write("abc def")
+
+    right_click_terminal.select_click(5, 0, button: :right)
+
+    expect(right_click_terminal.selection).to eq("def")
+  end
+
   it "selects rectangular cell ranges" do
     terminal.write("abcd\r\nefgh")
 
     terminal.select_rectangle(1, 0, 2, 1)
 
     expect(terminal.selection).to eq("bc\r\nfg")
+  end
+
+  it "keeps rectangular selection aligned around wide-character boundaries" do
+    terminal.write("a漢b\r\nc漢d")
+
+    terminal.select_rectangle(2, 0, 2, 1)
+
+    expect(terminal.selection).to eq("漢\r\n漢")
+  end
+
+  it "can select all text from the normal buffer while the alt buffer is active" do
+    terminal.write("normal")
+    terminal.write("\e[?1049h")
+    terminal.write("alt")
+
+    terminal.select_all(buffer: :normal)
+
+    expect(terminal.selection).to include("normal")
+    expect(terminal.selection).not_to include("alt")
   end
 end

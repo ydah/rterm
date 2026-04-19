@@ -1285,5 +1285,18 @@ RSpec.describe RTerm::Common::InputHandler do
 
       expect(responses).to eq(["\e]LIcon\a", "\e]lTitle\a"])
     end
+
+    it "saves and restores icon and title stack entries" do
+      parse("\e]1;Icon1\a")
+      parse("\e]2;Title1\a")
+      parse("\e[22;0t")
+      parse("\e]1;Icon2\a")
+      parse("\e]2;Title2\a")
+      parse("\e[23;0t")
+
+      expect(handler.icon_name).to eq("Icon1")
+      expect(handler.title).to eq("Title1")
+      expect(handler.title_stack).to be_empty
+    end
   end
 end
