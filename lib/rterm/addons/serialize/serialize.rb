@@ -35,6 +35,7 @@ module RTerm
       #   :exclude_colors [Boolean] exclude OSC dynamic color state
       #   :exclude_cursor_style [Boolean] exclude DECSCUSR cursor style state
       #   :exclude_title [Boolean] exclude title/icon name state
+      #   :exclude_images [Boolean] exclude image protocol payloads
       # @return [String] serialized terminal state
       def serialize(options = {})
         buffer_set = @terminal.internal.buffer_set
@@ -46,14 +47,17 @@ module RTerm
 
         if options[:include_alt_buffer] && !options[:exclude_alt_buffer]
           result << serialize_buffer(buffer_set.normal, options.fetch(:scrollback, 0))
+          result << serialize_images(buffer_set.normal, options.fetch(:scrollback, 0)) unless options[:exclude_images]
           result << "\e[?1049h"
           result << serialize_buffer(buffer_set.alt, 0)
+          result << serialize_images(buffer_set.alt, 0) unless options[:exclude_images]
           result << "\e[?1049l" unless buffer_set.active.equal?(buffer_set.alt)
           return result
         end
 
         buffer = options[:exclude_alt_buffer] ? buffer_set.normal : buffer_set.active
         result << serialize_buffer(buffer, options.fetch(:scrollback, 0))
+        result << serialize_images(buffer, options.fetch(:scrollback, 0)) unless options[:exclude_images]
         result
       end
 
@@ -198,6 +202,25 @@ module RTerm
 
       def serialize_cursor_style
         "\e[#{cursor_style_param} q"
+      end
+
+      def serialize_images(buffer, scrollback)
+        indexes = line_indexes(buffer, scrollback)
+        index_offset = indexes.first || 0
+        buffer_name = buffer.equal?(@terminal.internal.buffer_set.alt) ? :alt : :normal
+
+        @terminal.images.filter_map do |image|
+          placement = image[:placement] || {}
+          next unless placement[:buffer] == buffer_name
+          next unless indexes.include?(placement[:row])
+
+          row = placement[:row] - index_offset
+          col = placement[:col].to_i
+          raw_sequence = image[:raw_sequence]
+          next unless raw_sequence
+
+          "\e[#{row + 1};#{col + 1}H#{raw_sequence}"
+        end.join
       end
 
       def cursor_style_param
