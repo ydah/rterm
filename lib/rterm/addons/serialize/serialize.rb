@@ -203,6 +203,7 @@ module RTerm
           "charset" => snapshot_charset_state(handler),
           "current_link" => deep_dup(handler.instance_variable_get(:@current_link)),
           "selection" => deep_dup(@terminal.instance_variable_get(:@selection)),
+          "search" => snapshot_search_state,
           "dynamic_colors" => {
             "foreground" => color_manager.foreground,
             "background" => color_manager.background,
@@ -261,6 +262,7 @@ module RTerm
         restore_charset_state(handler, data["charset"] || {})
         handler.instance_variable_set(:@current_link, symbolize_hash(data["current_link"]))
         @terminal.instance_variable_set(:@selection, symbolize_hash(data["selection"]))
+        restore_search_state(data["search"])
         restore_dynamic_colors(handler.color_manager, stringify_keys(data["dynamic_colors"] || {}))
       end
 
@@ -368,6 +370,29 @@ module RTerm
         Array(data["palette"]).each_with_index do |color, index|
           color_manager.set_ansi_color(index, color) if color
         end
+      end
+
+      def snapshot_search_state
+        addon = search_addon
+        addon ? deep_dup(addon.state) : nil
+      end
+
+      def restore_search_state(data)
+        return unless data
+
+        addon = search_addon
+        addon&.restore_state(data, emit: false)
+      end
+
+      def search_addon
+        loaded_addons.find do |addon|
+          addon.respond_to?(:state) && addon.respond_to?(:restore_state) &&
+            addon.class.name == "RTerm::Addon::Search"
+        end
+      end
+
+      def loaded_addons
+        @terminal.instance_variable_get(:@addons) || []
       end
 
       def serialize_line(line, result, prev_fg, prev_bg, prev_link)

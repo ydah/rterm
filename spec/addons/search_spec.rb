@@ -34,6 +34,18 @@ RSpec.describe RTerm::Addon::Search do
       expect(matches.length).to eq(2)
     end
 
+    it "reports regex capture metadata" do
+      terminal.write("foo123 bar456\r\n")
+
+      match = search.find_all("(?<word>foo)(?<digits>\\d+)", regex: true).first
+
+      expect(match[:captures]).to contain_exactly(
+        include(index: 1, name: "word", text: "foo", start: 0, end: 3, relative_start: 0, relative_end: 3),
+        include(index: 2, name: "digits", text: "123", start: 3, end: 6, relative_start: 3, relative_end: 6)
+      )
+      expect(match[:captures].first[:ranges]).to eq([{ row: 0, line_index: 0, col: 0, length: 3 }])
+    end
+
     it "supports whole word search" do
       terminal.write("hello helloworld hello\r\n")
       matches = search.find_all("hello", whole_word: true)
@@ -94,10 +106,50 @@ RSpec.describe RTerm::Addon::Search do
       expect(search.decorations.map { |item| item[:decoration] }).to all(eq({ background: "#ffff00" }))
     end
 
+    it "emits decoration update events" do
+      events = []
+      terminal.on(:search_decorations) { |payload| events << payload }
+      terminal.write("hello hello")
+
+      search.find_all("hello", decorations: { background: "#ffff00" })
+      search.clear_decorations
+
+      expect(events[0]).to include(action: :update)
+      expect(events[0][:decorations].length).to eq(2)
+      expect(events[1]).to include(action: :clear, decorations: [])
+    end
+
     it "returns empty matches for invalid regular expressions" do
       terminal.write("hello")
 
       expect(search.find_all("[", regex: true)).to eq([])
+      expect(search.state[:error]).to include("premature end")
+    end
+  end
+
+  describe "#update" do
+    it "updates incremental search state" do
+      terminal.write("hello hello")
+
+      state = search.update("hello", decorations: { background: "#ffff00" })
+
+      expect(state).to include(query: "hello", current_index: nil, error: nil)
+      expect(state[:matches].length).to eq(2)
+      expect(state[:decorations].length).to eq(2)
+      expect(search.state[:options]).to include(regex: false, case_sensitive: false)
+    end
+
+    it "restores search state and decorations" do
+      terminal.write("hello")
+      search.update("hello", decorations: { background: "#ffff00" })
+      restored = described_class.new
+      restored_terminal = RTerm::Terminal.new(cols: 80, rows: 24)
+      restored_terminal.load_addon(restored)
+
+      restored.restore_state(search.state)
+
+      expect(restored.state[:query]).to eq("hello")
+      expect(restored.decorations.first[:decoration]).to eq({ background: "#ffff00" })
     end
   end
 
