@@ -88,6 +88,43 @@ RSpec.describe "OSC handlers and DEC private modes" do
     expect(clipboard).to include(selection: "c", data: "not-base64", decoded: nil, allowed: false, reason: :invalid_base64)
   end
 
+  it "rejects malformed OSC 52 multipart base64" do
+    clipboard = nil
+    terminal.on(:clipboard) { |payload| clipboard = payload }
+
+    terminal.write("\e]52;c;SGVs;;bG8=\a")
+
+    expect(clipboard).to include(
+      selection: "c",
+      data: "SGVs;;bG8=",
+      decoded: nil,
+      multipart: true,
+      chunks: 3,
+      allowed: false,
+      reason: :invalid_base64
+    )
+  end
+
+  it "decodes OSC 52 multipart base64 chunks" do
+    clipboard = nil
+    responses = []
+    terminal.on(:clipboard) { |payload| clipboard = payload }
+    terminal.on(:data) { |data| responses << data }
+
+    terminal.write("\e]52;c;SGVs;bG8=\a")
+    terminal.write("\e]52;c;?\a")
+
+    expect(clipboard).to include(
+      selection: "c",
+      data: "SGVs;bG8=",
+      decoded: "Hello",
+      multipart: true,
+      chunks: 2,
+      allowed: true
+    )
+    expect(responses).to eq(["\e]52;c;SGVsbG8=\a"])
+  end
+
   it "applies OSC 52 clipboard size limits" do
     limited = RTerm::Terminal.new(cols: 20, rows: 4, clipboard_max_bytes: 3)
     clipboard = nil
