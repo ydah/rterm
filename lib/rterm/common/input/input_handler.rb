@@ -42,6 +42,9 @@ module RTerm
         @sgr_mouse_mode = false
         @utf8_mouse_mode = false
         @urxvt_mouse_mode = false
+        @left_right_margin_mode = false
+        @left_margin = 0
+        @right_margin = nil
         @color_manager = ColorManager.new(options[:theme] || RTerm::Theme.new)
         @default_cursor_style = options[:cursor_style] || :block
         @cursor_style = @default_cursor_style
@@ -68,8 +71,11 @@ module RTerm
           cursor_hidden: @cursor_hidden,
           focus_event_mode: @focus_event_mode,
           insert_mode: @insert_mode,
+          left_margin: left_margin,
+          left_right_margin_mode: @left_right_margin_mode,
           mouse_tracking_mode: @mouse_tracking_mode,
           origin_mode: @origin_mode,
+          right_margin: right_margin,
           reverse_wraparound_mode: @reverse_wraparound,
           sgr_mouse_mode: @sgr_mouse_mode,
           urxvt_mouse_mode: @urxvt_mouse_mode,
@@ -117,6 +123,15 @@ module RTerm
         @buffer_set.active
       end
 
+      def left_margin
+        @left_right_margin_mode ? @left_margin : 0
+      end
+
+      def right_margin
+        margin = @left_right_margin_mode ? (@right_margin || buffer.cols - 1) : buffer.cols - 1
+        [margin, buffer.cols - 1].min
+      end
+
       def register_handlers
         register_c0_handlers
         register_print_handler
@@ -154,15 +169,17 @@ module RTerm
           ch = translate_char(raw_ch)
           width = char_width(ch)
 
-          if buf.x >= buf.cols
+          if buf.x > right_margin || (width.positive? && buf.x + width - 1 > right_margin)
             if @autowrap
               buf.get_line(buf.y)&.is_wrapped = true
               line_feed
               carriage_return
             else
-              buf.x = buf.cols - 1
+              buf.x = right_margin
             end
           end
+
+          buf.x = left_margin if @left_right_margin_mode && buf.x < left_margin
 
           line = buf.get_line(buf.y)
           next unless line
@@ -182,7 +199,7 @@ module RTerm
 
           buf.x += width
 
-          buf.x = buf.cols - 1 if !@autowrap && buf.x >= buf.cols
+          buf.x = right_margin if !@autowrap && buf.x > right_margin
           @last_printed_char = ch
         end
       end
@@ -205,7 +222,7 @@ module RTerm
         # CUF - Cursor Forward
         @parser.set_csi_handler({ final: "C" }) do |params|
           n = [params[0], 1].max
-          buffer.x = [buffer.x + n, buffer.cols - 1].min
+          buffer.x = [buffer.x + n, right_margin].min
         end
 
         # CUB - Cursor Backward
@@ -394,19 +411,19 @@ module RTerm
         # CHA - Cursor Horizontal Absolute
         @parser.set_csi_handler({ final: "G" }) do |params|
           col = [params[0], 1].max
-          buffer.x = [[col - 1, 0].max, buffer.cols - 1].min
+          buffer.x = [[col - 1, left_margin].max, right_margin].min
         end
 
         # HPA - Horizontal Position Absolute
         @parser.set_csi_handler({ final: "`" }) do |params|
           col = [params[0], 1].max
-          buffer.x = [[col - 1, 0].max, buffer.cols - 1].min
+          buffer.x = [[col - 1, left_margin].max, right_margin].min
         end
 
         # HPR - Horizontal Position Relative
         @parser.set_csi_handler({ final: "a" }) do |params|
           col = [params[0], 1].max
-          buffer.x = [buffer.x + col, buffer.cols - 1].min
+          buffer.x = [buffer.x + col, right_margin].min
         end
 
         # REP - Repeat Previous Character
@@ -438,8 +455,12 @@ module RTerm
         end
 
         # SCP - Save Cursor
-        @parser.set_csi_handler({ final: "s" }) do
-          save_cursor_state
+        @parser.set_csi_handler({ final: "s" }) do |params|
+          if @left_right_margin_mode && (params.length > 1 || params[0].positive?)
+            set_left_right_margins(params)
+          else
+            save_cursor_state
+          end
         end
 
         # RCP - Restore Cursor
@@ -627,9 +648,9 @@ module RTerm
 
       def cursor_backward(n)
         n.times do
-          if buffer.x.positive?
+          if buffer.x > left_margin
             buffer.x -= 1
-          elsif @reverse_wraparound && buffer.y.positive?
+          elsif @reverse_wraparound && buffer.y.positive? && !@left_right_margin_mode
             buffer.y -= 1
             buffer.x = reverse_wrap_column(buffer.get_line(buffer.y))
           end
@@ -670,7 +691,7 @@ module RTerm
       end
 
       def carriage_return
-        buffer.x = 0
+        buffer.x = left_margin
       end
 
       # ── Scroll helpers ──
@@ -708,6 +729,18 @@ module RTerm
         end
       end
 
+      def set_left_right_margins(params)
+        left = [params[0], 1].max
+        right = params.length > 1 && params[1].positive? ? params[1] : buffer.cols
+        left = [[left - 1, 0].max, buffer.cols - 1].min
+        right = [[right - 1, 0].max, buffer.cols - 1].min
+        return if left >= right
+
+        @left_margin = left
+        @right_margin = right
+        reset_cursor_to_home
+      end
+
       # ── Cursor position helper ──
 
       def move_cursor_to(params)
@@ -715,8 +748,10 @@ module RTerm
         col = params.length > 1 ? [params[1], 1].max : 1
         top = @origin_mode ? buffer.scroll_top : 0
         bottom = @origin_mode ? buffer.scroll_bottom : buffer.rows - 1
+        left = @origin_mode ? left_margin : 0
+        right = @left_right_margin_mode ? right_margin : buffer.cols - 1
         buffer.y = [[top + row - 1, top].max, bottom].min
-        buffer.x = [[col - 1, 0].max, buffer.cols - 1].min
+        buffer.x = [[left + col - 1, left].max, right].min
       end
 
       # ── Erase helpers ──
@@ -1047,6 +1082,8 @@ module RTerm
           @cursor_hidden ? 2 : 1
         when 45
           @reverse_wraparound ? 1 : 2
+        when 69
+          @left_right_margin_mode ? 1 : 2
         when 66
           @application_keypad_mode ? 1 : 2
         when 9, 1000
@@ -1089,6 +1126,11 @@ module RTerm
           @cursor_hidden = false
         when 45
           @reverse_wraparound = true
+        when 69
+          @left_right_margin_mode = true
+          @left_margin = 0
+          @right_margin = buffer.cols - 1
+          reset_cursor_to_home
         when 66
           @application_keypad_mode = true
         when 9
@@ -1134,6 +1176,11 @@ module RTerm
           @cursor_hidden = true
         when 45
           @reverse_wraparound = false
+        when 69
+          @left_right_margin_mode = false
+          @left_margin = 0
+          @right_margin = buffer.cols - 1
+          reset_cursor_to_home
         when 66
           @application_keypad_mode = false
         when 9, 1000, 1002, 1003
@@ -1182,6 +1229,9 @@ module RTerm
         @sgr_mouse_mode = false
         @utf8_mouse_mode = false
         @urxvt_mouse_mode = false
+        @left_right_margin_mode = false
+        @left_margin = 0
+        @right_margin = buf.cols - 1
         @color_manager.reset_defaults
         @color_manager.reset_ansi_color
         @clipboard.clear
@@ -1375,7 +1425,7 @@ module RTerm
       end
 
       def reset_cursor_to_home
-        buffer.x = 0
+        buffer.x = left_margin
         buffer.y = @origin_mode ? buffer.scroll_top : 0
       end
 

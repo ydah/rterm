@@ -572,6 +572,58 @@ RSpec.describe RTerm::Common::InputHandler do
       end
     end
 
+    describe "DECSLRM (s) - set left and right margins" do
+      it "sets horizontal margins when DECLRMM is enabled" do
+        parse("\e[?69h")
+        parse("\e[3;8s")
+
+        expect(handler.modes[:left_right_margin_mode]).to be true
+        expect(handler.modes[:left_margin]).to eq(2)
+        expect(handler.modes[:right_margin]).to eq(7)
+        expect(buffer.x).to eq(2)
+      end
+
+      it "clamps horizontal cursor movement to the margins" do
+        parse("\e[?69h\e[3;8s")
+
+        parse("\e[99C")
+        expect(buffer.x).to eq(7)
+
+        parse("\e[99D")
+        expect(buffer.x).to eq(2)
+      end
+
+      it "wraps at the right margin and returns to the left margin" do
+        parse("\e[?69h\e[3;5s")
+
+        parse("ABCD")
+
+        expect(cell_at(2, 0).char).to eq("A")
+        expect(cell_at(4, 0).char).to eq("C")
+        expect(cell_at(2, 1).char).to eq("D")
+        expect(buffer.x).to eq(3)
+        expect(buffer.y).to eq(1)
+      end
+
+      it "makes CUP relative to horizontal margins in origin mode" do
+        parse("\e[?69h\e[3;8s\e[?6h")
+
+        parse("\e[1;1H")
+
+        expect(buffer.x).to eq(2)
+      end
+
+      it "reports DECLRMM mode through DECRQM" do
+        responses = []
+        handler.on(:data) { |data| responses << data }
+
+        parse("\e[?69h")
+        parse("\e[?69$p")
+
+        expect(responses.last).to eq("\e[?69;1$y")
+      end
+    end
+
     describe "SM/RM (h/l) - standard modes" do
       it "enables and disables insert mode" do
         parse("ABCD")
