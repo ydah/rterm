@@ -752,6 +752,7 @@ module RTerm
             buf.lines[i] = src.clone if src
           end
           buf.lines[bottom] = BufferLine.new(buf.cols)
+          shift_images_in_region(buffer_name(buf), top, bottom, -1)
         end
       end
 
@@ -766,6 +767,7 @@ module RTerm
             buf.lines[i] = src.clone if src
           end
           buf.lines[top] = BufferLine.new(buf.cols)
+          shift_images_in_region(buffer_name(buf), top, bottom, 1)
         end
       end
 
@@ -1493,16 +1495,87 @@ module RTerm
       end
 
       def record_image(payload, raw_sequence:)
+        active_buffer = buffer
+        buffer_name = buffer_name(active_buffer)
+        row = active_buffer.y_base + active_buffer.y
+        col = active_buffer.x
+        occupancy = image_occupancy(payload, buffer_name, row, col, active_buffer.cols)
         image = payload.merge(
           placement: {
-            buffer: @buffer_set.active.equal?(@buffer_set.alt) ? :alt : :normal,
-            row: buffer.y_base + buffer.y,
-            col: buffer.x
+            buffer: buffer_name,
+            row: row,
+            col: col
           },
+          occupancy: occupancy,
           raw_sequence: raw_sequence
         )
         @images << image
         emit(:image, image)
+      end
+
+      def buffer_name(buf)
+        buf.equal?(@buffer_set.alt) ? :alt : :normal
+      end
+
+      def image_occupancy(payload, buffer_name, row, col, buffer_cols)
+        rows, cols = image_cell_size(payload)
+        cells = []
+        rows.times do |row_offset|
+          cols.times do |col_offset|
+            cell_col = col + col_offset
+            next if cell_col.negative? || cell_col >= buffer_cols
+
+            cells << { row: row + row_offset, col: cell_col }
+          end
+        end
+
+        { buffer: buffer_name, row: row, col: col, rows: rows, cols: cols, cells: cells }
+      end
+
+      def image_cell_size(payload)
+        case payload[:protocol]
+        when :sixel
+          geometry = payload[:geometry] || {}
+          cols = [geometry[:cell_width].to_i, 1].max
+          pixel_height = geometry[:pixel_height].to_i
+          rows = pixel_height.positive? ? [(pixel_height / 6.0).ceil, 1].max : 1
+          [rows, cols]
+        when :iterm2
+          attrs = payload[:attributes] || {}
+          [cell_dimension(attrs["height"]), cell_dimension(attrs["width"])]
+        else
+          [1, 1]
+        end
+      end
+
+      def cell_dimension(value)
+        text = value.to_s
+        return text.to_i if text.match?(/\A[1-9]\d*\z/)
+
+        1
+      end
+
+      def shift_images_in_region(buffer_name, top, bottom, delta)
+        @images.delete_if do |image|
+          placement = image[:placement] || {}
+          next false unless placement[:buffer] == buffer_name
+
+          row = placement[:row].to_i
+          next false unless row >= top && row <= bottom
+
+          removed_edge = delta.negative? ? top : bottom
+          next true if row == removed_edge
+
+          placement[:row] = row + delta
+          image[:occupancy] = image_occupancy(
+            image,
+            buffer_name,
+            placement[:row],
+            placement[:col].to_i,
+            buffer.cols
+          )
+          false
+        end
       end
 
       def sixel_sequence(params, data)

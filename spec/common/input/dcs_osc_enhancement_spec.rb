@@ -64,6 +64,14 @@ RSpec.describe "DCS and OSC enhanced handling" do
       data: "ABCDEF",
       geometry: { cell_width: 6, pixel_height: 6 },
       placement: { buffer: :normal, row: 0, col: 0 },
+      occupancy: {
+        buffer: :normal,
+        row: 0,
+        col: 0,
+        rows: 1,
+        cols: 6,
+        cells: (0...6).map { |col| { row: 0, col: col } }
+      },
       raw_sequence: "\ePqABCDEF\e\\"
     )
     expect(terminal.images).to include(image)
@@ -73,15 +81,53 @@ RSpec.describe "DCS and OSC enhanced handling" do
     image = nil
     terminal.on(:image) { |payload| image = payload }
 
-    terminal.write("\e]1337;File=name=test.png;inline=1:AAAA\a")
+    terminal.write("\e]1337;File=name=test.png;inline=1;width=3;height=2:AAAA\a")
 
     expect(image).to include(
       protocol: :iterm2,
-      params: "name=test.png;inline=1",
-      attributes: { "name" => "test.png", "inline" => "1" },
+      params: "name=test.png;inline=1;width=3;height=2",
+      attributes: { "name" => "test.png", "inline" => "1", "width" => "3", "height" => "2" },
       data: "AAAA",
       placement: { buffer: :normal, row: 0, col: 0 },
-      raw_sequence: "\e]1337;File=name=test.png;inline=1:AAAA\a"
+      occupancy: {
+        buffer: :normal,
+        row: 0,
+        col: 0,
+        rows: 2,
+        cols: 3,
+        cells: [
+          { row: 0, col: 0 },
+          { row: 0, col: 1 },
+          { row: 0, col: 2 },
+          { row: 1, col: 0 },
+          { row: 1, col: 1 },
+          { row: 1, col: 2 }
+        ]
+      },
+      raw_sequence: "\e]1337;File=name=test.png;inline=1;width=3;height=2:AAAA\a"
     )
+  end
+
+  it "keeps image placement stable when the row enters scrollback" do
+    scrolled = RTerm::Terminal.new(cols: 10, rows: 2, scrollback: 5)
+    scrolled.write("\ePqABC\e\\")
+
+    scrolled.write("\n\n")
+
+    image = scrolled.images.first
+    expect(scrolled.buffer.active.y_base).to eq(1)
+    expect(image[:placement]).to eq(buffer: :normal, row: 0, col: 0)
+    expect(image[:occupancy][:cells]).to eq((0...3).map { |col| { row: 0, col: col } })
+  end
+
+  it "moves image placement when a scroll region shifts its row" do
+    terminal.write("\e[2;3r\e[3;1H")
+    terminal.write("\ePqABC\e\\")
+
+    terminal.write("\n")
+
+    image = terminal.images.first
+    expect(image[:placement]).to eq(buffer: :normal, row: 1, col: 0)
+    expect(image[:occupancy][:cells]).to eq((0...3).map { |col| { row: 1, col: col } })
   end
 end
