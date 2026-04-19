@@ -1,14 +1,20 @@
 # frozen_string_literal: true
 
 require_relative "../base"
+require_relative "logical_line_builder"
+require_relative "match_mapper"
 
 module RTerm
   module Addon
     class Search < Base
+      attr_reader :decorations
+
       def activate(terminal)
         super
         @current_match = nil
         @current_match_index = nil
+        @current_query_key = nil
+        @decorations = []
       end
 
       # Find next occurrence of term
@@ -19,12 +25,14 @@ module RTerm
         all = find_all(term, options)
         return nil if all.empty?
 
-        if @current_match.nil?
+        query_key = query_key(term, options)
+        if @current_match.nil? || @current_query_key != query_key
           @current_match_index = 0
         else
           @current_match_index = ((@current_match_index || 0) + 1) % all.length
         end
 
+        @current_query_key = query_key
         @current_match = all[@current_match_index]
       end
 
@@ -36,18 +44,20 @@ module RTerm
         all = find_all(term, options)
         return nil if all.empty?
 
-        if @current_match.nil?
+        query_key = query_key(term, options)
+        if @current_match.nil? || @current_query_key != query_key
           @current_match_index = all.length - 1
         else
           @current_match_index = ((@current_match_index || 0) - 1) % all.length
         end
 
+        @current_query_key = query_key
         @current_match = all[@current_match_index]
       end
 
       # Find all occurrences
       # @param term [String] search term
-      # @param options [Hash] :regex, :whole_word, :case_sensitive
+      # @param options [Hash] :regex, :whole_word, :case_sensitive, :scrollback, :decorations
       # @return [Array<Hash>] array of {row:, col:, length:}
       def find_all(term, options = {})
         return [] if term.nil? || term.empty?
@@ -56,21 +66,26 @@ module RTerm
         buffer = @terminal.internal.buffer_set.active
         regex = build_regex(term, options)
 
-        logical_lines(buffer).each do |logical_line|
+        logical_lines(buffer, options).each do |logical_line|
           text = logical_line[:text]
           text.scan(regex) do
             m = Regexp.last_match
-            position = buffer_position_for(logical_line[:segments], m.begin(0))
-            matches << { row: position[:row], col: position[:col], length: m[0].length }
+            match = MatchMapper.build(logical_line, m.begin(0), m[0])
+            matches << match if match
           end
         end
 
+        @decorations = decorate(matches, options[:decorations]) if options[:decorations]
         matches
+      rescue RegexpError
+        []
       end
 
       def clear_decorations
         @current_match = nil
         @current_match_index = nil
+        @current_query_key = nil
+        @decorations = []
       end
 
       def dispose
@@ -79,6 +94,17 @@ module RTerm
       end
 
       private
+
+      def query_key(term, options)
+        [
+          term,
+          options[:regex] == true,
+          options[:whole_word] == true,
+          options[:case_sensitive] == true,
+          options[:scrollback],
+          options[:include_scrollback]
+        ]
+      end
 
       def build_regex(term, options)
         pattern = if options[:regex]
@@ -93,35 +119,12 @@ module RTerm
         Regexp.new(pattern, flags)
       end
 
-      def logical_lines(buffer)
-        lines = []
-        current = nil
-
-        buffer.rows.times do |row|
-          line = buffer.get_line(row)
-          next unless line
-
-          text = line.to_string(trim_right: false)
-          current ||= { text: +"", segments: [] }
-          current[:segments] << { row: row, start: current[:text].length, length: text.length }
-          current[:text] << text
-
-          next if line.is_wrapped
-
-          lines << current
-          current = nil
-        end
-
-        lines << current if current
-        lines
+      def logical_lines(buffer, options = {})
+        LogicalLineBuilder.new(buffer).call(options)
       end
 
-      def buffer_position_for(segments, offset)
-        segment = segments.find { |item| offset < item[:start] + item[:length] } || segments.last
-        {
-          row: segment[:row],
-          col: offset - segment[:start]
-        }
+      def decorate(matches, style)
+        matches.map { |match| match.merge(decoration: style) }
       end
     end
   end
