@@ -398,6 +398,57 @@ RSpec.describe RTerm::Common::InputHandler do
       end
     end
 
+    describe "DEC rectangular area operations" do
+      it "erases a rectangular area" do
+        parse("ABCDE\r\nFGHIJ")
+
+        parse("\e[1;2;2;4$z")
+
+        expect(cell_at(0, 0).char).to eq("A")
+        expect(cell_at(1, 0).char).to eq("")
+        expect(cell_at(3, 0).char).to eq("")
+        expect(cell_at(4, 0).char).to eq("E")
+        expect(cell_at(0, 1).char).to eq("F")
+        expect(cell_at(1, 1).char).to eq("")
+        expect(cell_at(3, 1).char).to eq("")
+        expect(cell_at(4, 1).char).to eq("J")
+      end
+
+      it "fills a rectangular area" do
+        parse("\e[88;1;2;2;4$x")
+
+        expect(cell_at(1, 0).char).to eq("X")
+        expect(cell_at(3, 0).char).to eq("X")
+        expect(cell_at(1, 1).char).to eq("X")
+        expect(cell_at(3, 1).char).to eq("X")
+      end
+
+      it "changes and reverses attributes in a rectangular area" do
+        parse("ABCD\r\nEFGH")
+
+        parse("\e[1;2;2;3;1$r")
+
+        expect(cell_at(1, 0).bold?).to be true
+        expect(cell_at(2, 1).bold?).to be true
+        expect(cell_at(0, 0).bold?).to be false
+
+        parse("\e[1;2;2;3;1$t")
+
+        expect(cell_at(1, 0).bold?).to be false
+        expect(cell_at(2, 1).bold?).to be false
+      end
+
+      it "selectively erases only unprotected cells in a rectangular area" do
+        parse("\e[1\"qA\e[0\"qBC")
+
+        parse("\e[1;1;1;3${")
+
+        expect(cell_at(0, 0).char).to eq("A")
+        expect(cell_at(1, 0).char).to eq("")
+        expect(cell_at(2, 0).char).to eq("")
+      end
+    end
+
     describe "VPA (d) - vertical position absolute" do
       it "moves cursor to absolute row (1-based)" do
         parse("\e[5d")
@@ -483,6 +534,29 @@ RSpec.describe RTerm::Common::InputHandler do
       end
     end
 
+    describe "DECSED/DECSEL - selective erase" do
+      it "preserves protected cells during selective line erase" do
+        parse("\e[1\"qA\e[0\"qBC")
+        buffer.x = 0
+
+        parse("\e[?2K")
+
+        expect(cell_at(0, 0).char).to eq("A")
+        expect(cell_at(1, 0).char).to eq("")
+        expect(cell_at(2, 0).char).to eq("")
+      end
+
+      it "preserves protected cells during selective display erase" do
+        parse("\e[1\"qA\e[0\"qB\r\nCD")
+
+        parse("\e[?2J")
+
+        expect(cell_at(0, 0).char).to eq("A")
+        expect(cell_at(1, 0).char).to eq("")
+        expect(cell_at(0, 1).char).to eq("")
+      end
+    end
+
     describe "DECSTBM (r) - set scroll region" do
       it "sets scroll region" do
         parse("\e[5;20r")
@@ -509,6 +583,37 @@ RSpec.describe RTerm::Common::InputHandler do
 
         parse("\e[4l")
         expect(handler.insert_mode).to be false
+      end
+    end
+
+    describe "DECRQM - request mode" do
+      it "reports ANSI mode status" do
+        responses = []
+        handler.on(:data) { |data| responses << data }
+
+        parse("\e[4h")
+        parse("\e[4$p")
+
+        expect(responses.last).to eq("\e[4;1$y")
+      end
+
+      it "reports DEC private mode status" do
+        responses = []
+        handler.on(:data) { |data| responses << data }
+
+        parse("\e[?7l")
+        parse("\e[?7$p")
+
+        expect(responses.last).to eq("\e[?7;2$y")
+      end
+
+      it "reports unknown modes as unsupported" do
+        responses = []
+        handler.on(:data) { |data| responses << data }
+
+        parse("\e[?999$p")
+
+        expect(responses.last).to eq("\e[?999;0$y")
       end
     end
   end

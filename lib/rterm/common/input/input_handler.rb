@@ -244,9 +244,19 @@ module RTerm
           erase_in_display(params[0])
         end
 
+        # DECSED - Selective Erase in Display
+        @parser.set_csi_handler({ prefix: "?", final: "J" }) do |params|
+          erase_in_display(params[0], selective: true)
+        end
+
         # EL - Erase in Line
         @parser.set_csi_handler({ final: "K" }) do |params|
           erase_in_line(params[0])
+        end
+
+        # DECSEL - Selective Erase in Line
+        @parser.set_csi_handler({ prefix: "?", final: "K" }) do |params|
+          erase_in_line(params[0], selective: true)
         end
 
         # IL - Insert Lines
@@ -293,6 +303,31 @@ module RTerm
             end_col = [buffer.x + n, buffer.cols].min
             line.replace_cells(buffer.x, end_col, erase_cell)
           end
+        end
+
+        # DECFRA - Fill Rectangular Area
+        @parser.set_csi_handler({ intermediates: "$", final: "x" }) do |params|
+          fill_rectangular_area(params)
+        end
+
+        # DECCARA - Change Attributes in Rectangular Area
+        @parser.set_csi_handler({ intermediates: "$", final: "r" }) do |params|
+          change_rectangular_area_attributes(params)
+        end
+
+        # DECRARA - Reverse Attributes in Rectangular Area
+        @parser.set_csi_handler({ intermediates: "$", final: "t" }) do |params|
+          reverse_rectangular_area_attributes(params)
+        end
+
+        # DECERA - Erase Rectangular Area
+        @parser.set_csi_handler({ intermediates: "$", final: "z" }) do |params|
+          erase_rectangular_area(params)
+        end
+
+        # DECSERA - Selective Erase Rectangular Area
+        @parser.set_csi_handler({ intermediates: "$", final: "{" }) do |params|
+          erase_rectangular_area(params, selective: true)
         end
 
         # SGR - Set Graphic Rendition
@@ -392,6 +427,11 @@ module RTerm
           @cursor_style = cursor_style_from_param(params[0])
         end
 
+        # DECSCA - Select Character Protection Attribute
+        @parser.set_csi_handler({ intermediates: '"', final: "q" }) do |params|
+          @cur_attr.protected = params[0] == 1
+        end
+
         # CBT - Cursor Backward Tabulation
         @parser.set_csi_handler({ final: "Z" }) do |params|
           backward_tab([params[0], 1].max)
@@ -421,6 +461,11 @@ module RTerm
           end
         end
 
+        # DECRQM - Request ANSI Mode
+        @parser.set_csi_handler({ intermediates: "$", final: "p" }) do |params|
+          report_mode(params[0], mode_status(params[0]))
+        end
+
         # DECSM - DEC Private Mode Set (CSI ? h)
         @parser.set_csi_handler({ prefix: "?", final: "h" }) do |params|
           params.length.times do |i|
@@ -433,6 +478,11 @@ module RTerm
           params.length.times do |i|
             dec_private_mode_reset(params[i])
           end
+        end
+
+        # DECRQM - Request DEC Private Mode
+        @parser.set_csi_handler({ prefix: "?", intermediates: "$", final: "p" }) do |params|
+          report_mode(params[0], private_mode_status(params[0]), private_mode: true)
         end
       end
 
@@ -684,47 +734,142 @@ module RTerm
         @erase_cell
       end
 
-      def erase_in_display(mode)
+      def erase_in_display(mode, selective: false)
         buf = buffer
         case mode
         when 0
           # Erase from cursor to end of display
           line = buf.get_line(buf.y)
-          line&.replace_cells(buf.x, buf.cols, erase_cell)
+          replace_cells(line, buf.x, buf.cols, erase_cell, selective: selective)
           ((buf.y + 1)...buf.rows).each do |y|
-            buf.get_line(y)&.replace_cells(0, buf.cols, erase_cell)
+            replace_cells(buf.get_line(y), 0, buf.cols, erase_cell, selective: selective)
           end
         when 1
           # Erase from start of display to cursor
           (0...buf.y).each do |y|
-            buf.get_line(y)&.replace_cells(0, buf.cols, erase_cell)
+            replace_cells(buf.get_line(y), 0, buf.cols, erase_cell, selective: selective)
           end
           line = buf.get_line(buf.y)
-          line&.replace_cells(0, buf.x + 1, erase_cell)
+          replace_cells(line, 0, buf.x + 1, erase_cell, selective: selective)
         when 2
           # Erase entire display
           buf.rows.times do |y|
-            buf.get_line(y)&.replace_cells(0, buf.cols, erase_cell)
+            replace_cells(buf.get_line(y), 0, buf.cols, erase_cell, selective: selective)
           end
         when 3
           # Erase scrollback
-          buf.clear
+          buf.clear unless selective
         end
       end
 
-      def erase_in_line(mode)
+      def erase_in_line(mode, selective: false)
         buf = buffer
         line = buf.get_line(buf.y)
         return unless line
 
         case mode
         when 0
-          line.replace_cells(buf.x, buf.cols, erase_cell)
+          replace_cells(line, buf.x, buf.cols, erase_cell, selective: selective)
         when 1
-          line.replace_cells(0, buf.x + 1, erase_cell)
+          replace_cells(line, 0, buf.x + 1, erase_cell, selective: selective)
         when 2
-          line.replace_cells(0, buf.cols, erase_cell)
+          replace_cells(line, 0, buf.cols, erase_cell, selective: selective)
         end
+      end
+
+      def replace_cells(line, start_col, end_col, fill, selective: false)
+        return unless line
+
+        if selective
+          start_col = [[start_col, 0].max, line.length].min
+          end_col = [[end_col, 0].max, line.length].min
+          (start_col...end_col).each do |x|
+            next if line.get_cell(x)&.protected?
+
+            line.set_cell(x, fill)
+          end
+        else
+          line.replace_cells(start_col, end_col, fill)
+        end
+      end
+
+      def erase_rectangular_area(params, selective: false)
+        each_rectangular_cell(params) do |line, x|
+          next if selective && line.get_cell(x)&.protected?
+
+          line.set_cell(x, erase_cell)
+        end
+      end
+
+      def fill_rectangular_area(params)
+        fill = CellData.new
+        fill.copy_from(@cur_attr)
+        fill.char = fill_char_from_param(params[0])
+        fill.width = 1
+
+        each_rectangular_cell(params, offset: 1) do |line, x|
+          line.set_cell(x, fill)
+        end
+      end
+
+      def change_rectangular_area_attributes(params)
+        attrs = rectangular_attribute_params(params)
+        each_rectangular_cell(params) do |line, x|
+          cell = line.get_cell(x)
+          apply_sgr_to_attr(cell, attrs) if cell
+        end
+      end
+
+      def reverse_rectangular_area_attributes(params)
+        attrs = rectangular_attribute_params(params)
+        each_rectangular_cell(params) do |line, x|
+          cell = line.get_cell(x)
+          reverse_sgr_on_attr(cell, attrs) if cell
+        end
+      end
+
+      def each_rectangular_cell(params, offset: 0)
+        top, left, bottom, right = rectangular_area(params, offset)
+        (top..bottom).each do |y|
+          line = buffer.get_line(y)
+          next unless line
+
+          (left..right).each { |x| yield line, x, y }
+        end
+      end
+
+      def rectangular_area(params, offset)
+        top = positive_param(params, offset, 1)
+        left = positive_param(params, offset + 1, 1)
+        bottom = positive_param(params, offset + 2, buffer.rows)
+        right = positive_param(params, offset + 3, buffer.cols)
+
+        top = [[top - 1, 0].max, buffer.rows - 1].min
+        left = [[left - 1, 0].max, buffer.cols - 1].min
+        bottom = [[bottom - 1, top].max, buffer.rows - 1].min
+        right = [[right - 1, left].max, buffer.cols - 1].min
+        [top, left, bottom, right]
+      end
+
+      def positive_param(params, index, default)
+        return default if index >= params.length || params[index].zero?
+
+        [params[index], 1].max
+      end
+
+      def rectangular_attribute_params(params)
+        values = []
+        4.upto(params.length - 1) { |index| values << params[index] }
+        values.empty? ? [0] : values
+      end
+
+      def fill_char_from_param(value)
+        return " " if value.to_i.zero?
+
+        char = value.to_i.chr(Encoding::UTF_8)
+        char_width(char) == 1 ? char : " "
+      rescue RangeError
+        " "
       end
 
       # ── Insert/Delete lines ──
@@ -760,77 +905,97 @@ module RTerm
       # ── SGR ──
 
       def handle_sgr(params)
+        apply_sgr_to_attr(@cur_attr, params)
+      end
+
+      def apply_sgr_to_attr(attr, params)
         i = 0
         while i < params.length
           p = params[i]
           case p
           when 0
-            @cur_attr.reset
+            attr.reset
           when 1
-            @cur_attr.bold = true
+            attr.bold = true
           when 2
-            @cur_attr.dim = true
+            attr.dim = true
           when 3
-            @cur_attr.italic = true
+            attr.italic = true
           when 4
-            @cur_attr.underline = true
+            attr.underline = true
           when 5
-            @cur_attr.blink = true
+            attr.blink = true
           when 7
-            @cur_attr.inverse = true
+            attr.inverse = true
           when 8
-            @cur_attr.invisible = true
+            attr.invisible = true
           when 9
-            @cur_attr.strikethrough = true
+            attr.strikethrough = true
           when 22
-            @cur_attr.bold = false
-            @cur_attr.dim = false
+            attr.bold = false
+            attr.dim = false
           when 23
-            @cur_attr.italic = false
+            attr.italic = false
           when 24
-            @cur_attr.underline = false
+            attr.underline = false
           when 25
-            @cur_attr.blink = false
+            attr.blink = false
           when 27
-            @cur_attr.inverse = false
+            attr.inverse = false
           when 28
-            @cur_attr.invisible = false
+            attr.invisible = false
           when 29
-            @cur_attr.strikethrough = false
+            attr.strikethrough = false
           when 30..37
-            @cur_attr.set_fg_color(:p16, p - 30)
+            attr.set_fg_color(:p16, p - 30)
           when 38
-            i = handle_extended_color(params, i, :fg)
+            i = handle_extended_color(attr, params, i, :fg)
           when 39
-            @cur_attr.reset_fg_color
+            attr.reset_fg_color
           when 40..47
-            @cur_attr.set_bg_color(:p16, p - 40)
+            attr.set_bg_color(:p16, p - 40)
           when 48
-            i = handle_extended_color(params, i, :bg)
+            i = handle_extended_color(attr, params, i, :bg)
           when 49
-            @cur_attr.reset_bg_color
+            attr.reset_bg_color
           when 53
-            @cur_attr.overline = true
+            attr.overline = true
           when 55
-            @cur_attr.overline = false
+            attr.overline = false
           when 90..97
-            @cur_attr.set_fg_color(:p16, p - 90 + 8)
+            attr.set_fg_color(:p16, p - 90 + 8)
           when 100..107
-            @cur_attr.set_bg_color(:p16, p - 100 + 8)
+            attr.set_bg_color(:p16, p - 100 + 8)
           end
           i += 1
         end
       end
 
-      def handle_extended_color(params, i, target)
+      def reverse_sgr_on_attr(attr, params)
+        params.each do |p|
+          case p
+          when 1 then attr.bold = !attr.bold?
+          when 2 then attr.dim = !attr.dim?
+          when 3 then attr.italic = !attr.italic?
+          when 4 then attr.underline = !attr.underline?
+          when 5 then attr.blink = !attr.blink?
+          when 7 then attr.inverse = !attr.inverse?
+          when 8 then attr.invisible = !attr.invisible?
+          when 9 then attr.strikethrough = !attr.strikethrough?
+          when 53 then attr.overline = !attr.overline?
+          end
+        end
+      end
+
+      def handle_extended_color(attr, params, i, target)
         if i + 1 < params.length && params[i + 1] == 5
           # 256 color: 38;5;N or 48;5;N
           if i + 2 < params.length
             color = params[i + 2]
             if target == :fg
-              @cur_attr.set_fg_color(:p256, color)
+              attr.set_fg_color(:p256, color)
             else
-              @cur_attr.set_bg_color(:p256, color)
+              attr.set_bg_color(:p256, color)
             end
             return i + 2
           end
@@ -842,14 +1007,69 @@ module RTerm
             b = params[i + 4]
             rgb = (r << 16) | (g << 8) | b
             if target == :fg
-              @cur_attr.set_fg_color(:rgb, rgb)
+              attr.set_fg_color(:rgb, rgb)
             else
-              @cur_attr.set_bg_color(:rgb, rgb)
+              attr.set_bg_color(:rgb, rgb)
             end
             return i + 4
           end
         end
         i
+      end
+
+      # ── Mode reports ──
+
+      def report_mode(mode, status, private_mode: false)
+        prefix = private_mode ? "?" : ""
+        emit(:data, "\e[#{prefix}#{mode};#{status}$y")
+      end
+
+      def mode_status(mode)
+        case mode
+        when 4
+          @insert_mode ? 1 : 2
+        else
+          0
+        end
+      end
+
+      def private_mode_status(mode)
+        case mode
+        when 1
+          @application_cursor_keys_mode ? 1 : 2
+        when 6
+          @origin_mode ? 1 : 2
+        when 7
+          @autowrap ? 1 : 2
+        when 12
+          @cursor_blink ? 1 : 2
+        when 25
+          @cursor_hidden ? 2 : 1
+        when 45
+          @reverse_wraparound ? 1 : 2
+        when 66
+          @application_keypad_mode ? 1 : 2
+        when 9, 1000
+          @mouse_tracking_mode == :x10 ? 1 : 2
+        when 1002
+          @mouse_tracking_mode == :button ? 1 : 2
+        when 1003
+          @mouse_tracking_mode == :any ? 1 : 2
+        when 1004
+          @focus_event_mode ? 1 : 2
+        when 1005
+          @utf8_mouse_mode ? 1 : 2
+        when 1006
+          @sgr_mouse_mode ? 1 : 2
+        when 1015
+          @urxvt_mouse_mode ? 1 : 2
+        when 47, 1047, 1049
+          @buffer_set.active.equal?(@buffer_set.alt) ? 1 : 2
+        when 2004
+          @bracketed_paste_mode ? 1 : 2
+        else
+          0
+        end
       end
 
       # ── DEC Private Modes ──

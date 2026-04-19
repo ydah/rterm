@@ -183,6 +183,16 @@ module RTerm
         @bg = value ? (@bg | BgFlags::OVERLINE) : (@bg & ~BgFlags::OVERLINE)
       end
 
+      def protected?
+        (@bg & BgFlags::PROTECTED) != 0
+      end
+
+      alias protected protected?
+
+      def protected=(value)
+        @bg = value ? (@bg | BgFlags::PROTECTED) : (@bg & ~BgFlags::PROTECTED)
+      end
+
       # --- Foreground Color ---
 
       # @return [Symbol] :default, :p16, :p256, or :rgb
