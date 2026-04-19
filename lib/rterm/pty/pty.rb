@@ -13,12 +13,14 @@ module RTerm
     # @param command [String] command to run (default: ENV['SHELL'] || '/bin/bash')
     # @param args [Array<String>] command arguments
     # @param env [Hash] environment variables
+    # @param cwd [String, nil] working directory for the child process
     # @param cols [Integer] terminal columns
     # @param rows [Integer] terminal rows
     # @param read_chunk_size [Integer] maximum bytes read from the PTY per read
-    def initialize(command: nil, args: [], env: {}, cols: 80, rows: 24, read_chunk_size: DEFAULT_READ_CHUNK_SIZE)
+    def initialize(command: nil, args: [], env: {}, cwd: nil, cols: 80, rows: 24,
+                   read_chunk_size: DEFAULT_READ_CHUNK_SIZE)
       cmd = command || ENV['SHELL'] || '/bin/bash'
-      spawn_args = env.empty? ? [cmd, *args] : [stringify_env(env), cmd, *args]
+      spawn_args = build_spawn_args(cmd, args, env, cwd)
       @master, @slave, @pid = ::PTY.spawn(*spawn_args)
       @master.winsize = [rows, cols]
       @read_chunk_size = [read_chunk_size.to_i, 1].max
@@ -29,6 +31,8 @@ module RTerm
       @process_status = nil
       @exit_notified = false
       @closed = false
+      @stdin_closed = false
+      @paused = false
       @mutex = Mutex.new
     end
 
@@ -40,6 +44,35 @@ module RTerm
       true
     rescue Errno::EIO, IOError
       false
+    end
+
+    # Close the child's stdin side.
+    # @return [Boolean]
+    def close_stdin
+      return false if closed? || @stdin_closed || @slave.closed?
+
+      @slave.write("\x04")
+      @stdin_closed = true
+      true
+    rescue Errno::EIO, IOError
+      false
+    end
+
+    # Pause the background read loop.
+    def pause
+      @paused = true
+      true
+    end
+
+    # Resume the background read loop.
+    def resume
+      @paused = false
+      true
+    end
+
+    # @return [Boolean]
+    def paused?
+      @paused
     end
 
     # Read available PTY output without blocking.
@@ -154,6 +187,11 @@ module RTerm
         loop do
           break if closed? || @master.closed?
 
+          if paused?
+            sleep 0.05
+            next
+          end
+
           data = @master.read_nonblock(@read_chunk_size)
           data.force_encoding('UTF-8')
           @on_data_callbacks.dup.each { |cb| cb.call(data) }
@@ -237,6 +275,15 @@ module RTerm
       env.each_with_object({}) do |(key, value), result|
         result[key.to_s] = value.to_s
       end
+    end
+
+    def build_spawn_args(cmd, args, env, cwd)
+      spawn_args = []
+      spawn_args << stringify_env(env) unless env.empty?
+      spawn_args << cmd
+      spawn_args.concat(args)
+      spawn_args << { chdir: cwd } if cwd
+      spawn_args
     end
   end
 

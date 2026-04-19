@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "tmpdir"
+
 RSpec.describe RTerm::Pty do
   before do
     skip "PTY not available" unless defined?(::PTY)
@@ -10,6 +12,17 @@ RSpec.describe RTerm::Pty do
       pty = described_class.new(command: "/bin/echo", args: ["hello"])
       expect(pty.pid).to be_a(Integer)
       pty.close
+    end
+
+    it "spawns a process in the requested cwd" do
+      pty = described_class.new(command: RbConfig.ruby, args: ["-e", "puts Dir.pwd"], cwd: Dir.tmpdir)
+      received = +""
+      pty.on_data { |data| received << data }
+
+      wait_until { received.include?(Dir.tmpdir) || pty.exit_status }
+      pty.close
+
+      expect(received).to include(Dir.tmpdir)
     end
   end
 
@@ -51,6 +64,36 @@ RSpec.describe RTerm::Pty do
       sleep 0.5
       pty.close
       expect(received).to include("test input")
+    end
+
+    it "can close stdin" do
+      pty = described_class.new(command: RbConfig.ruby, args: ["-e", "STDIN.read; puts 'done'"])
+      received = +""
+      pty.on_data { |data| received << data }
+
+      expect(pty.close_stdin).to be true
+      wait_until { received.include?("done") || pty.exit_status }
+      pty.close
+
+      expect(received).to include("done")
+    end
+  end
+
+  describe "#pause and #resume" do
+    it "pauses and resumes background reads" do
+      pty = described_class.new(command: RbConfig.ruby, args: ["-e", "print 'paused'; STDOUT.flush; sleep 0.2"])
+      received = +""
+      pty.pause
+      pty.on_data { |data| received << data }
+
+      sleep 0.15
+      expect(received).to eq("")
+
+      pty.resume
+      wait_until { received.include?("paused") || pty.exit_status }
+      pty.close
+
+      expect(received).to include("paused")
     end
   end
 
