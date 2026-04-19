@@ -297,5 +297,25 @@ RSpec.describe RTerm::Addon::Serialize do
 
       expect(restored.selection).to eq("ell")
     end
+
+    it "restores search addon state and decorations when the addon is loaded" do
+      search = RTerm::Addon::Search.new
+      terminal.load_addon(search)
+      terminal.write("hello hello")
+      search.update("hello", decorations: { background: "#ffff00" })
+      snapshot = serializer.snapshot
+
+      restored = RTerm::Terminal.new(cols: 80, rows: 24)
+      restored_search = RTerm::Addon::Search.new
+      restored_serializer = described_class.new
+      restored.load_addon(restored_search)
+      restored.load_addon(restored_serializer)
+
+      restored_serializer.restore(snapshot)
+
+      expect(restored_search.state[:query]).to eq("hello")
+      expect(restored_search.decorations.length).to eq(2)
+      expect(restored_search.decorations.first[:decoration]).to eq({ background: "#ffff00" })
+    end
   end
 end
