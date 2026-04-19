@@ -44,6 +44,7 @@ module RTerm
         @color_manager = ColorManager.new(options[:theme] || RTerm::Theme.new)
         @default_cursor_style = options[:cursor_style] || :block
         @cursor_style = @default_cursor_style
+        @clipboard = {}
         @current_link = nil
         @charset_g = 0
         @charsets = [Charsets.fetch(:ascii), Charsets.fetch(:ascii)]
@@ -513,20 +514,19 @@ module RTerm
         end
 
         @parser.set_osc_handler(10) do |data|
-          @color_manager.foreground = data
+          handle_dynamic_color_osc(10, :foreground, data)
         end
 
         @parser.set_osc_handler(11) do |data|
-          @color_manager.background = data
+          handle_dynamic_color_osc(11, :background, data)
         end
 
         @parser.set_osc_handler(12) do |data|
-          @color_manager.cursor = data
+          handle_dynamic_color_osc(12, :cursor, data)
         end
 
         @parser.set_osc_handler(52) do |data|
-          selection, encoded = data.split(";", 2)
-          emit(:clipboard, { selection: selection || "", data: encoded || "" })
+          handle_clipboard_osc(data)
         end
 
         @parser.set_osc_handler(1337) do |data|
@@ -951,6 +951,7 @@ module RTerm
         @urxvt_mouse_mode = false
         @color_manager.reset_defaults
         @color_manager.reset_ansi_color
+        @clipboard.clear
         @current_link = nil
         @charset_g = 0
         @charsets = [Charsets.fetch(:ascii), Charsets.fetch(:ascii)]
@@ -979,8 +980,70 @@ module RTerm
         parts.each_slice(2) do |index, color|
           next if index.nil? || color.nil?
 
-          @color_manager.set_ansi_color(index.to_i, color)
+          if color == "?"
+            emit(:data, "\e]4;#{index};#{osc_color_spec(@color_manager.palette[index.to_i])}\a")
+          else
+            @color_manager.set_ansi_color(index.to_i, color)
+          end
         end
+      end
+
+      def handle_dynamic_color_osc(id, target, data)
+        if data == "?"
+          emit(:data, "\e]#{id};#{osc_color_spec(@color_manager.public_send(target))}\a")
+        else
+          @color_manager.public_send("#{target}=", data)
+        end
+      end
+
+      def handle_clipboard_osc(data)
+        selection, encoded = data.split(";", 2)
+        selection ||= ""
+        encoded ||= ""
+
+        if encoded == "?"
+          emit(:clipboard_request, { selection: selection })
+          respond_to_clipboard_query(selection)
+          return
+        end
+
+        decoded = decode_clipboard_data(encoded)
+        @clipboard[selection] = decoded if decoded
+        emit(:clipboard, { selection: selection, data: encoded, decoded: decoded })
+      end
+
+      def respond_to_clipboard_query(selection)
+        value = @clipboard[selection]
+        return unless value
+
+        encoded = encode_clipboard_data(value)
+        emit(:data, "\e]52;#{selection};#{encoded}\a")
+      end
+
+      def decode_clipboard_data(encoded)
+        return "" if encoded.empty?
+        return nil unless encoded.match?(/\A[A-Za-z0-9+\/]*={0,2}\z/) && (encoded.length % 4).zero?
+
+        encoded.unpack1("m0").force_encoding("UTF-8").scrub
+      rescue ArgumentError
+        nil
+      end
+
+      def encode_clipboard_data(value)
+        [value].pack("m0")
+      end
+
+      def osc_color_spec(color)
+        value = color.to_s
+        return value if value.start_with?("rgb:")
+
+        hex = value.delete_prefix("#")
+        return value unless hex.match?(/\A[0-9a-fA-F]{6}\z/)
+
+        red = hex[0, 2]
+        green = hex[2, 2]
+        blue = hex[4, 2]
+        "rgb:#{red}#{red}/#{green}#{green}/#{blue}#{blue}".downcase
       end
 
       def handle_palette_reset_osc(data)
