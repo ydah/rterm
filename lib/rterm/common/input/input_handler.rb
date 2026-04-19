@@ -63,7 +63,6 @@ module RTerm
         @last_printed_char = nil
         @erase_cell = CellData.new
         @print_cell = CellData.new
-        @spacer_cell = CellData.new.tap { |c| c.width = 0 }
 
         register_handlers
       end
@@ -175,7 +174,12 @@ module RTerm
           ch = translate_char(raw_ch)
           width = char_width(ch)
 
-          if buf.x > right_margin || (width.positive? && buf.x + width - 1 > right_margin)
+          if width.zero?
+            append_to_previous_cell(ch)
+            next
+          end
+
+          if buf.x > right_margin || buf.x + width - 1 > right_margin
             if @autowrap
               buf.get_line(buf.y)&.is_wrapped = true
               line_feed
@@ -199,14 +203,42 @@ module RTerm
 
           line.set_cell(buf.x, @print_cell)
 
-          if width == 2 && buf.x + 1 < buf.cols
-            line.set_cell(buf.x + 1, @spacer_cell)
-          end
-
           buf.x += width
 
           buf.x = right_margin if !@autowrap && buf.x > right_margin
           @last_printed_char = ch
+        end
+      end
+
+      def append_to_previous_cell(ch)
+        line, x = previous_printable_cell
+        return unless line
+
+        cell = line.get_cell(x)
+        return unless cell&.has_content? && cell.width.positive?
+
+        cell.char = cell.char + ch
+      end
+
+      def previous_printable_cell
+        buf = buffer
+        y = buf.y
+        x = [buf.x - 1, buf.cols - 1].min
+
+        loop do
+          return nil if y.negative?
+
+          line = buf.get_line(y)
+          if line && x >= 0
+            x -= 1 if x.positive? && line.get_cell(x)&.width&.zero? && line.get_cell(x - 1)&.width == 2
+            cell = line.get_cell(x)
+            return [line, x] if cell&.has_content? && cell.width.positive?
+          end
+
+          return nil unless y.positive? && buf.get_line(y - 1)&.is_wrapped
+
+          y -= 1
+          x = buf.cols - 1
         end
       end
 

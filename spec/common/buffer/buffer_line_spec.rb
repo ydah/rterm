@@ -191,5 +191,93 @@ RSpec.describe RTerm::Common::BufferLine do
       expect(line.get_cell(0).char).to eq("漢")
       expect(line.get_cell(0).width).to eq(2)
     end
+
+    it "creates the spacer cell for width-2 characters" do
+      line = described_class.new(4)
+      cell = RTerm::Common::CellData.new
+      cell.char = "語"
+      cell.width = 2
+
+      line.set_cell(1, cell)
+
+      expect(line.get_cell(1).char).to eq("語")
+      expect(line.get_cell(1).width).to eq(2)
+      expect(line.get_cell(2).char).to eq("")
+      expect(line.get_cell(2).width).to eq(0)
+    end
+
+    it "clears the spacer when overwriting the left half" do
+      line = described_class.new(4)
+      wide = RTerm::Common::CellData.new
+      wide.char = "語"
+      wide.width = 2
+      line.set_cell(0, wide)
+
+      replacement = RTerm::Common::CellData.new
+      replacement.char = "A"
+      line.set_cell(0, replacement)
+
+      expect(line.get_cell(0).char).to eq("A")
+      expect(line.get_cell(0).width).to eq(1)
+      expect(line.get_cell(1).char).to eq("")
+      expect(line.get_cell(1).width).to eq(1)
+    end
+
+    it "clears the base when overwriting the right half" do
+      line = described_class.new(4)
+      wide = RTerm::Common::CellData.new
+      wide.char = "語"
+      wide.width = 2
+      line.set_cell(0, wide)
+
+      replacement = RTerm::Common::CellData.new
+      replacement.char = "A"
+      line.set_cell(1, replacement)
+
+      expect(line.get_cell(0).char).to eq("")
+      expect(line.get_cell(0).width).to eq(1)
+      expect(line.get_cell(1).char).to eq("A")
+      expect(line.get_cell(1).width).to eq(1)
+    end
+
+    it "does not leave a dangling spacer when inserting inside a wide character" do
+      line = described_class.new(6)
+      fill = RTerm::Common::CellData.new
+      line.set_cell(0, RTerm::Common::CellData.new.tap { |cell| cell.char = "A" })
+      line.set_cell(1, RTerm::Common::CellData.new.tap { |cell| cell.char = "語"; cell.width = 2 })
+      line.set_cell(3, RTerm::Common::CellData.new.tap { |cell| cell.char = "B" })
+      line.set_cell(4, RTerm::Common::CellData.new.tap { |cell| cell.char = "C" })
+
+      line.insert_cells(2, 1, fill)
+
+      expect(line.to_string).to eq("A   BC")
+      expect((0...line.length).map { |x| line.get_cell(x).width }).to eq([1, 1, 1, 1, 1, 1])
+    end
+
+    it "does not leave a dangling spacer when deleting part of a wide character" do
+      line = described_class.new(6)
+      fill = RTerm::Common::CellData.new
+      line.set_cell(0, RTerm::Common::CellData.new.tap { |cell| cell.char = "A" })
+      line.set_cell(1, RTerm::Common::CellData.new.tap { |cell| cell.char = "語"; cell.width = 2 })
+      line.set_cell(3, RTerm::Common::CellData.new.tap { |cell| cell.char = "B" })
+      line.set_cell(4, RTerm::Common::CellData.new.tap { |cell| cell.char = "C" })
+
+      line.delete_cells(1, 1, fill)
+
+      expect(line.to_string).to eq("A BC")
+      expect((0...line.length).map { |x| line.get_cell(x).width }).to eq([1, 1, 1, 1, 1, 1])
+    end
+
+    it "drops a width-2 character that would start in the final column" do
+      line = described_class.new(4)
+      cell = RTerm::Common::CellData.new
+      cell.char = "語"
+      cell.width = 2
+
+      line.set_cell(3, cell)
+
+      expect(line.get_cell(3).char).to eq("")
+      expect(line.get_cell(3).width).to eq(1)
+    end
   end
 end
