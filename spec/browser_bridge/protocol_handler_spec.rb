@@ -73,6 +73,21 @@ RSpec.describe RTerm::BrowserBridge::ProtocolHandler do
       expect(msg['session_id']).to eq('s1')
     end
 
+    it '.session_resumed creates session_resumed message' do
+      json = described_class.session_resumed('s1', 'client_id' => 'c1')
+      msg = JSON.parse(json)
+      expect(msg['type']).to eq('session_resumed')
+      expect(msg['session_id']).to eq('s1')
+      expect(msg['payload']['client_id']).to eq('c1')
+    end
+
+    it '.negotiated creates negotiated message' do
+      json = described_class.negotiated(binary: true)
+      msg = JSON.parse(json)
+      expect(msg['type']).to eq('negotiated')
+      expect(msg['payload']['binary']).to be true
+    end
+
     it '.pong creates pong message' do
       json = described_class.pong
       msg = JSON.parse(json)
@@ -108,6 +123,11 @@ RSpec.describe RTerm::BrowserBridge::ProtocolHandler do
       decoded = described_class.decode_binary(frame)
 
       expect(decoded).to eq({ type: 'output', payload: { 'data' => 'xyz' } })
+    end
+
+    it 'detects binary frames' do
+      expect(described_class.binary_frame?(described_class.encode_binary(:input, "abc"))).to be true
+      expect(described_class.binary_frame?('{"type":"ping"}')).to be false
     end
 
     it 'rejects unknown binary frame flags' do
@@ -245,6 +265,46 @@ RSpec.describe RTerm::BrowserBridge::SessionManager do
     end
   end
 
+  describe '#attach_session and #resume_session' do
+    it 'attaches clients and returns a session snapshot' do
+      id = manager.create_session(cols: 100, rows: 30)
+
+      snapshot = manager.attach_session(id, client_id: "client-1")
+
+      expect(snapshot).to include("client_id" => "client-1", "cols" => 100, "rows" => 30)
+      expect(manager.attached_clients(id)).to eq(["client-1"])
+    end
+
+    it 'supports single-client attach policy' do
+      single = described_class.new(attach_policy: :single)
+      id = single.create_session
+      single.attach_session(id, client_id: "client-1")
+
+      expect { single.attach_session(id, client_id: "client-2") }
+        .to raise_error(RTerm::BrowserBridge::SessionError, /already has an attached client/)
+    end
+
+    it 'supports replace attach policy' do
+      replacing = described_class.new(attach_policy: :replace)
+      id = replacing.create_session
+      replacing.attach_session(id, client_id: "client-1")
+      replacing.attach_session(id, client_id: "client-2")
+
+      expect(replacing.attached_clients(id)).to eq(["client-2"])
+    end
+
+    it 'resumes an existing session by attaching and returning current state' do
+      id = manager.create_session
+      manager.write(id, "Hello")
+
+      snapshot = manager.resume_session(id, client_id: "client-1")
+
+      expect(snapshot["client_id"]).to eq("client-1")
+      expect(snapshot["modes"]).to include(:wraparound_mode)
+      expect(manager.attached_clients(id)).to eq(["client-1"])
+    end
+  end
+
   describe '#process_message' do
     it 'handles create_session' do
       msg = { type: 'create_session', session_id: nil, payload: { 'cols' => 80, 'rows' => 24 } }
@@ -282,6 +342,30 @@ RSpec.describe RTerm::BrowserBridge::SessionManager do
       parsed = JSON.parse(response)
       expect(parsed['type']).to eq('session_destroyed')
       expect(manager.session_count).to eq(0)
+    end
+
+    it 'handles resume_session' do
+      id = manager.create_session(cols: 90, rows: 25)
+      msg = { type: 'resume_session', session_id: id, payload: { 'client_id' => 'client-1' } }
+
+      response = manager.process_message(msg)
+      parsed = JSON.parse(response)
+
+      expect(parsed['type']).to eq('session_resumed')
+      expect(parsed['session_id']).to eq(id)
+      expect(parsed['payload']['client_id']).to eq('client-1')
+      expect(parsed['payload']['cols']).to eq(90)
+    end
+
+    it 'handles detach_session' do
+      id = manager.create_session
+      manager.attach_session(id, client_id: "client-1")
+
+      response = manager.process_message(type: 'detach_session', session_id: id, payload: { 'client_id' => 'client-1' })
+      parsed = JSON.parse(response)
+
+      expect(parsed['type']).to eq('session_detached')
+      expect(manager.attached_clients(id)).to eq([])
     end
 
     it 'returns error for unknown message type' do

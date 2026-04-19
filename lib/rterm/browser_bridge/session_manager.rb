@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'securerandom'
+require 'set'
 require_relative "../pty/pty"
 
 module RTerm
@@ -15,6 +16,7 @@ module RTerm
                      session_timeout: nil, idle_timeout: nil, authenticator: nil,
                      output_queue_limit: 1_048_576, auto_flush_output: true,
                      max_message_bytes: nil, rate_limit: nil, heartbeat_timeout: nil,
+                     attach_policy: :multiple,
                      clock: -> { Time.now })
         @sessions = {}
         @max_sessions = max_sessions
@@ -28,6 +30,7 @@ module RTerm
         @max_message_bytes = max_message_bytes
         @rate_limit = rate_limit
         @heartbeat_timeout = heartbeat_timeout
+        @attach_policy = attach_policy.to_sym
         @clock = clock
         @output_callbacks = []
         @exit_callbacks = []
@@ -60,6 +63,7 @@ module RTerm
           created_at: now,
           last_activity_at: now,
           last_heartbeat_at: now,
+          clients: Set.new,
           output_queue: [],
           queued_output_bytes: 0
         }
@@ -84,6 +88,37 @@ module RTerm
       # @raise [SessionError] if session not found
       def get_terminal(session_id)
         get_session(session_id)[:terminal]
+      end
+
+      # Attaches a browser client to an existing session.
+      # @param session_id [String]
+      # @param client_id [String, nil]
+      # @return [Hash] resumable session snapshot
+      def attach_session(session_id, client_id: nil)
+        session = get_session(session_id)
+        client_id = (client_id || SecureRandom.uuid).to_s
+        attach_client(session, client_id)
+        touch(session)
+        session_snapshot(session, client_id)
+      end
+
+      # Detaches a browser client from a session.
+      # @param session_id [String]
+      # @param client_id [String]
+      def detach_session(session_id, client_id:)
+        session = get_session(session_id)
+        session[:clients].delete(client_id.to_s)
+        touch(session)
+      end
+
+      # Re-attaches to an existing session and returns a lightweight state snapshot.
+      # @param session_id [String]
+      # @param client_id [String, nil]
+      # @return [Hash]
+      def resume_session(session_id, client_id: nil)
+        session = get_session(session_id)
+        heartbeat(session_id)
+        attach_session(session_id, client_id: client_id)
       end
 
       # Writes input data to a session's terminal.
@@ -182,6 +217,21 @@ module RTerm
           )
           ProtocolHandler.session_created(session_id)
 
+        when ProtocolHandler::MessageType::ATTACH_SESSION
+          payload = message[:payload]
+          snapshot = attach_session(message[:session_id], client_id: payload['client_id'])
+          ProtocolHandler.session_attached(message[:session_id], snapshot)
+
+        when ProtocolHandler::MessageType::DETACH_SESSION
+          payload = message[:payload]
+          detach_session(message[:session_id], client_id: payload['client_id'])
+          ProtocolHandler.session_detached(message[:session_id])
+
+        when ProtocolHandler::MessageType::RESUME_SESSION
+          payload = message[:payload]
+          snapshot = resume_session(message[:session_id], client_id: payload['client_id'])
+          ProtocolHandler.session_resumed(message[:session_id], snapshot)
+
         when ProtocolHandler::MessageType::DESTROY_SESSION
           destroy_session(message[:session_id])
           ProtocolHandler.session_destroyed(message[:session_id])
@@ -226,6 +276,12 @@ module RTerm
         @sessions.keys
       end
 
+      # @param session_id [String]
+      # @return [Array<String>]
+      def attached_clients(session_id)
+        get_session(session_id)[:clients].to_a
+      end
+
       private
 
       def get_session(session_id)
@@ -256,6 +312,37 @@ module RTerm
         session = get_session(session_id)
         session[:last_heartbeat_at] = now
         touch(session)
+      end
+
+      def attach_client(session, client_id)
+        client_id = client_id.to_s
+        case @attach_policy
+        when :single
+          if !session[:clients].empty? && !session[:clients].include?(client_id)
+            raise SessionError, "Session already has an attached client"
+          end
+        when :replace
+          session[:clients].clear unless session[:clients].include?(client_id)
+        when :multiple
+          # Multiple clients may observe and drive the same terminal session.
+        else
+          raise SessionError, "Unknown attach policy: #{@attach_policy}"
+        end
+
+        session[:clients] << client_id
+      end
+
+      def session_snapshot(session, client_id)
+        terminal = session[:terminal]
+        {
+          'client_id' => client_id,
+          'cols' => terminal.cols,
+          'rows' => terminal.rows,
+          'title' => terminal.title,
+          'icon_name' => terminal.icon_name,
+          'modes' => terminal.modes,
+          'images' => terminal.images
+        }
       end
 
       def message_too_large?(message)
