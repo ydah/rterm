@@ -750,9 +750,24 @@ RSpec.describe RTerm::Common::InputHandler do
   describe "OSC sequences" do
     it "sets title with OSC 0" do
       title = nil
+      icon = nil
       handler.on(:title_change) { |t| title = t }
+      handler.on(:icon_name_change) { |value| icon = value }
       parse("\e]0;My Title\x07")
       expect(title).to eq("My Title")
+      expect(icon).to eq("My Title")
+      expect(handler.title).to eq("My Title")
+      expect(handler.icon_name).to eq("My Title")
+    end
+
+    it "sets icon name with OSC 1" do
+      icon = nil
+      handler.on(:icon_name_change) { |value| icon = value }
+
+      parse("\e]1;My Icon\x07")
+
+      expect(icon).to eq("My Icon")
+      expect(handler.icon_name).to eq("My Icon")
     end
 
     it "sets title with OSC 2" do
@@ -760,6 +775,7 @@ RSpec.describe RTerm::Common::InputHandler do
       handler.on(:title_change) { |t| title = t }
       parse("\e]2;Another Title\x07")
       expect(title).to eq("Another Title")
+      expect(handler.title).to eq("Another Title")
     end
   end
 
@@ -971,6 +987,39 @@ RSpec.describe RTerm::Common::InputHandler do
       handler.on(:data) { |d| response = d }
       parse("\e[>c")
       expect(response).to eq("\e[>0;276;0c")
+    end
+  end
+
+  describe "XTWINOPS (t) - window operations" do
+    it "emits window operation events" do
+      payload = nil
+      handler.on(:window_operation) { |value| payload = value }
+
+      parse("\e[1t")
+
+      expect(payload).to eq({ operation: 1, params: [1] })
+    end
+
+    it "responds with character size for size queries" do
+      responses = []
+      handler.on(:data) { |data| responses << data }
+
+      parse("\e[18t")
+      parse("\e[19t")
+
+      expect(responses).to eq(["\e[8;24;80t", "\e[8;24;80t"])
+    end
+
+    it "responds with icon and title reports" do
+      responses = []
+      handler.on(:data) { |data| responses << data }
+      parse("\e]1;Icon\a")
+      parse("\e]2;Title\a")
+
+      parse("\e[20t")
+      parse("\e[21t")
+
+      expect(responses).to eq(["\e]LIcon\a", "\e]lTitle\a"])
     end
   end
 end

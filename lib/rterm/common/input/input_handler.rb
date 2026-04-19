@@ -14,7 +14,8 @@ module RTerm
 
       attr_reader :autowrap, :cursor_hidden, :bracketed_paste_mode, :insert_mode,
                   :origin_mode, :application_cursor_keys_mode, :application_keypad_mode,
-                  :color_manager, :cursor_style, :cursor_blink, :reverse_wraparound
+                  :color_manager, :cursor_style, :cursor_blink, :reverse_wraparound,
+                  :title, :icon_name
 
       def initialize(buffer_set, parser, unicode_handler = nil, options = {})
         if unicode_handler.is_a?(Hash)
@@ -45,6 +46,8 @@ module RTerm
         @default_cursor_style = options[:cursor_style] || :block
         @cursor_style = @default_cursor_style
         @clipboard = {}
+        @title = ""
+        @icon_name = ""
         @current_link = nil
         @charset_g = 0
         @charsets = [Charsets.fetch(:ascii), Charsets.fetch(:ascii)]
@@ -297,6 +300,11 @@ module RTerm
           handle_sgr(params)
         end
 
+        # XTWINOPS - Window manipulation
+        @parser.set_csi_handler({ final: "t" }) do |params|
+          handle_window_operation(params)
+        end
+
         # DSR - Device Status Report
         @parser.set_csi_handler({ final: "n" }) do |params|
           case params[0]
@@ -495,11 +503,16 @@ module RTerm
 
       def register_osc_handlers
         @parser.set_osc_handler(0) do |data|
-          emit(:title_change, data)
+          set_icon_name(data)
+          set_title(data)
+        end
+
+        @parser.set_osc_handler(1) do |data|
+          set_icon_name(data)
         end
 
         @parser.set_osc_handler(2) do |data|
-          emit(:title_change, data)
+          set_title(data)
         end
 
         @parser.set_osc_handler(4) do |data|
@@ -952,6 +965,8 @@ module RTerm
         @color_manager.reset_defaults
         @color_manager.reset_ansi_color
         @clipboard.clear
+        @title = ""
+        @icon_name = ""
         @current_link = nil
         @charset_g = 0
         @charsets = [Charsets.fetch(:ascii), Charsets.fetch(:ascii)]
@@ -973,6 +988,31 @@ module RTerm
 
       def set_charset(slot, charset)
         @charsets[slot] = Charsets.fetch(charset)
+      end
+
+      def set_title(value)
+        @title = value.to_s
+        emit(:title_change, @title)
+      end
+
+      def set_icon_name(value)
+        @icon_name = value.to_s
+        emit(:icon_name_change, @icon_name)
+      end
+
+      def handle_window_operation(params)
+        values = params.to_array
+        operation = values.first.to_i
+        emit(:window_operation, { operation: operation, params: values })
+
+        case operation
+        when 18, 19
+          emit(:data, "\e[8;#{buffer.rows};#{buffer.cols}t")
+        when 20
+          emit(:data, "\e]L#{@icon_name}\a")
+        when 21
+          emit(:data, "\e]l#{@title}\a")
+        end
       end
 
       def handle_palette_osc(data)

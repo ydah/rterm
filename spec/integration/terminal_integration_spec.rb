@@ -91,6 +91,16 @@ RSpec.describe RTerm::Terminal do
     end
   end
 
+  describe "#title and #icon_name" do
+    it "stores title and icon name state" do
+      terminal.write("\e]1;Icon\a")
+      terminal.write("\e]2;Title\a")
+
+      expect(terminal.icon_name).to eq("Icon")
+      expect(terminal.title).to eq("Title")
+    end
+  end
+
   describe "#input" do
     it "emits data event for PTY forwarding" do
       received = nil

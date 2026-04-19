@@ -63,6 +63,39 @@ RSpec.describe RTerm::Addon::Serialize do
       expect(serializer.serialize(exclude_modes: true)).not_to include("\e[?7l")
     end
 
+    it "serializes extended terminal modes" do
+      terminal.write("\e[?1h\e=\e[?12h\e[?45h\e[?1002h\e[?1006h\e[?1004h\e[?2004h")
+
+      serialized = serializer.serialize
+      replayed = RTerm::Terminal.new(cols: 80, rows: 24)
+      replayed.write(serialized)
+
+      expect(replayed.modes).to include(
+        application_cursor_keys_mode: true,
+        application_keypad_mode: true,
+        cursor_blink: true,
+        reverse_wraparound_mode: true,
+        mouse_tracking_mode: :button,
+        sgr_mouse_mode: true,
+        focus_event_mode: true,
+        bracketed_paste_mode: true
+      )
+    end
+
+    it "serializes title and icon name state" do
+      terminal.write("\e]1;Icon\a")
+      terminal.write("\e]2;Title\a")
+
+      serialized = serializer.serialize
+      replayed = RTerm::Terminal.new(cols: 80, rows: 24)
+      replayed.write(serialized)
+
+      expect(serialized).to include("\e]1;Icon\a")
+      expect(serialized).to include("\e]2;Title\a")
+      expect(replayed.icon_name).to eq("Icon")
+      expect(replayed.title).to eq("Title")
+    end
+
     it "serializes cursor style" do
       terminal.write("\e[6 q")
 
