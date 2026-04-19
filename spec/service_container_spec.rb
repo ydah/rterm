@@ -27,4 +27,20 @@ RSpec.describe RTerm::ServiceContainer do
 
     expect { container.get(:missing) }.to raise_error(RTerm::ServiceContainer::ServiceNotFound)
   end
+
+  it "registers core log, char size, and OSC link services" do
+    terminal = RTerm::Terminal.new(log_level: :warn)
+    services = terminal.internal.services
+
+    expect(services.get(RTerm::Services::LOG_SERVICE).debug("ignored")).to be_nil
+    expect(services.get(RTerm::Services::LOG_SERVICE).warn("kept")[:message]).to eq("kept")
+    expect(services.get(RTerm::Services::CHAR_SIZE_SERVICE).measure(width: 8, height: 16)).to eq(
+      { width: 8.0, height: 16.0 }
+    )
+
+    terminal.write("\e]8;id=1;https://example.com\a")
+    expect(services.get(RTerm::Services::OSC_LINK_SERVICE).active_link).to eq(
+      { params: "id=1", uri: "https://example.com" }
+    )
+  end
 end

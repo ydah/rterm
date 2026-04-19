@@ -6,6 +6,9 @@ module RTerm
   # Main public API for the terminal emulator.
   # Wraps HeadlessTerminal with a user-friendly interface.
   class Terminal
+    URL_SELECTION_REGEX = %r{(?<![\w@])https?://[^\s<>\[\]{}|\\^`"']+}i
+    URL_TRAILING_PUNCTUATION = ".,;:!?"
+
     # @param options [Hash] terminal options
     # @option options [Integer] :cols (80) number of columns
     # @option options [Integer] :rows (24) number of rows
@@ -77,7 +80,7 @@ module RTerm
     # @param text [String, nil]
     # @return [String, nil]
     def key_event(key, modifiers: [], text: nil)
-      encoded = Common::KeyEncoder.new(modes).encode(key, modifiers: modifiers, text: text)
+      encoded = Common::KeyEncoder.new(modes).encode(key, modifiers: key_modifiers(modifiers), text: text)
       input(encoded) if encoded
     end
 
@@ -126,6 +129,24 @@ module RTerm
     # @return [Array<Hash>] image payloads placed by Sixel/iTerm2 protocols
     def images
       @terminal.input_handler.images
+    end
+
+    # Resolves renderer-facing colors for a cell without mutating buffer attributes.
+    # @param cell [Common::CellData]
+    # @return [Hash]
+    def cell_colors(cell)
+      @terminal.input_handler.color_manager.resolve_cell_colors(cell, options.to_h)
+    end
+
+    # Returns renderer-facing cursor policy.
+    # @param active [Boolean] whether the terminal is focused
+    # @return [Hash]
+    def cursor_info(active: true)
+      {
+        style: active ? @terminal.input_handler.cursor_style : options.cursor_inactive_style,
+        blink: active && @terminal.input_handler.cursor_blink,
+        width: options.cursor_width.to_i
+      }
     end
 
     # --- Buffer Operations ---
@@ -180,6 +201,45 @@ module RTerm
       }
     end
 
+    # Selects a URL at the given visible buffer position.
+    # @param column [Integer] cell column
+    # @param row [Integer] visible row
+    def select_url(column, row)
+      @selection = {
+        type: :url,
+        column: [column.to_i, 0].max,
+        row: [row.to_i, 0].max
+      }
+    end
+
+    # Selects the logical line at the given visible row.
+    # @param row [Integer] visible row
+    # @param include_wrapped [Boolean] whether to include soft-wrapped rows
+    def select_line(row, include_wrapped: true)
+      @selection = {
+        type: :line,
+        row: [row.to_i, 0].max,
+        include_wrapped: include_wrapped
+      }
+    end
+
+    # Applies xterm-style click selection behavior.
+    # @param column [Integer] cell column
+    # @param row [Integer] visible row
+    # @param click_count [Integer]
+    # @param button [Symbol]
+    def select_click(column, row, click_count: 1, button: :left)
+      if button.to_sym == :right && options.right_click_selects_word
+        return select_word(column, row)
+      end
+
+      case click_count.to_i
+      when 2 then select_word(column, row)
+      when 3 then select_line(row)
+      else select(column, row, 1)
+      end
+    end
+
     # Selects a rectangular cell range in the visible buffer.
     # @param start_column [Integer] starting column
     # @param start_row [Integer] starting row
@@ -196,9 +256,10 @@ module RTerm
     end
 
     # Selects all retained text in the active buffer, including scrollback.
-    def select_all
+    def select_all(buffer: :active)
       @selection = {
-        type: :all
+        type: :all,
+        buffer: buffer.to_sym
       }
     end
 
@@ -213,10 +274,14 @@ module RTerm
         selected_buffer_text(@selection[:column], @selection[:row], @selection[:length])
       when :word
         selected_word_text(@selection[:column], @selection[:row])
+      when :url
+        selected_url_text(@selection[:column], @selection[:row])
+      when :line
+        selected_line_text(@selection[:row], include_wrapped: @selection[:include_wrapped])
       when :rectangle
         selected_rectangle_text(@selection)
       when :all
-        selected_all_text
+        selected_all_text(@selection[:buffer])
       else
         ""
       end
@@ -234,6 +299,29 @@ module RTerm
     # @param rows [Integer] new number of rows
     def resize(cols, rows)
       @terminal.resize(cols, rows)
+    end
+
+    # Handles a wheel gesture, honoring mouse tracking, alternate scroll, and scroll sensitivity.
+    # @param amount [Integer] positive scrolls down, negative scrolls up
+    # @return [String, Integer, nil] emitted mouse/input sequence or viewport scroll amount
+    def mouse_wheel(amount, col: 0, row: 0, modifiers: [])
+      amount = amount.to_i
+      return nil if amount.zero?
+
+      if modes[:mouse_tracking_mode]
+        button = amount.negative? ? :wheel_up : :wheel_down
+        return mouse_event(button: button, col: col, row: row, event: :press, modifiers: modifiers)
+      end
+
+      if alternate_scroll?
+        sequence = amount.negative? ? "\e[A" : "\e[B"
+        payload = sequence * amount.abs
+        return input(payload)
+      end
+
+      lines = amount * options.scroll_sensitivity.to_i
+      scroll_lines(lines)
+      lines
     end
 
     # Encodes a mouse event according to the active DEC mouse mode.
@@ -289,15 +377,15 @@ module RTerm
       collect_rows(active.y_disp, active.rows)
     end
 
-    def all_rows
-      collect_rows(0, buffer.active.lines.length)
+    def all_rows(scope = :active)
+      selected_buffer = buffer_for_scope(scope)
+      collect_rows(0, selected_buffer.lines.length, selected_buffer)
     end
 
-    def collect_rows(start_index, count)
-      active = buffer.active
-      last_index = [start_index + count, active.lines.length].min
+    def collect_rows(start_index, count, selected_buffer = buffer.active)
+      last_index = [start_index + count, selected_buffer.lines.length].min
       rows = (start_index...last_index).filter_map do |index|
-        line = active.lines[index]
+        line = selected_buffer.lines[index]
         next unless line
 
         { line: line, wrapped_to_next: line.is_wrapped }
@@ -311,8 +399,8 @@ module RTerm
       line.get_trimmed_length.zero?
     end
 
-    def selected_all_text
-      join_row_text(all_rows)
+    def selected_all_text(scope = :active)
+      join_row_text(all_rows(scope))
     end
 
     def selected_buffer_text(column, row, length)
@@ -361,6 +449,34 @@ module RTerm
       last += 1 while last < segments.length - 1 && !separators.include?(segments[last + 1][:text])
 
       segments[first..last].map { |segment| segment[:text] }.join
+    end
+
+    def selected_url_text(column, row)
+      group = logical_group_for_row(row)
+      return "" unless group
+
+      offset = offset_for_cell(group[:segments], column, row)
+      return "" unless offset
+
+      group[:text].to_enum(:scan, URL_SELECTION_REGEX).each do
+        match = Regexp.last_match
+        url = trim_url(match[0])
+        start = match.begin(0)
+        finish = start + url.length
+        return url if offset >= start && offset < finish
+      end
+
+      ""
+    end
+
+    def selected_line_text(row, include_wrapped: true)
+      if include_wrapped
+        group = logical_group_for_row(row)
+        return group ? group[:text].rstrip : ""
+      end
+
+      row_info = visible_rows[[row, 0].max]
+      row_info ? line_text(row_info[:line]) : ""
     end
 
     def selected_rectangle_text(selection)
@@ -413,6 +529,82 @@ module RTerm
         column = next_column
       end
       segments
+    end
+
+    def logical_group_for_row(row)
+      row = [row.to_i, 0].max
+      logical_visible_groups.find { |group| row >= group[:start_row] && row <= group[:end_row] }
+    end
+
+    def logical_visible_groups
+      groups = []
+      current = nil
+
+      visible_rows.each_with_index do |row_info, row|
+        current ||= { text: +"", segments: [], start_row: row, end_row: row }
+        append_logical_segments(current, row_info, row)
+        current[:end_row] = row
+
+        next if row_info[:wrapped_to_next]
+
+        groups << current
+        current = nil
+      end
+      groups << current if current
+      groups
+    end
+
+    def append_logical_segments(group, row_info, row)
+      line_segments(row_info[:line], trim_right: !row_info[:wrapped_to_next]).each do |segment|
+        start = group[:text].length
+        group[:text] << segment[:text]
+        group[:segments] << segment.merge(row: row, start: start, end: group[:text].length)
+      end
+    end
+
+    def offset_for_cell(segments, column, row)
+      segment = segments.find do |item|
+        item[:row] == row && column >= item[:start_col] && column < item[:end_col]
+      end
+      segment ||= segments.find { |item| item[:row] == row && column == item[:end_col] }
+      segment&.fetch(:start)
+    end
+
+    def trim_url(url)
+      url = url.dup
+      loop do
+        last = url[-1]
+        break unless last
+
+        if URL_TRAILING_PUNCTUATION.include?(last)
+          url.chop!
+        elsif last == ")" && url.count(")") > url.count("(")
+          url.chop!
+        else
+          break
+        end
+      end
+      url
+    end
+
+    def buffer_for_scope(scope)
+      case scope.to_sym
+      when :normal then buffer.normal
+      when :alt, :alternate then buffer.alt
+      else buffer.active
+      end
+    end
+
+    def alternate_scroll?
+      options.alternate_scroll_mode &&
+        @terminal.buffer_set.active.equal?(@terminal.buffer_set.alt)
+    end
+
+    def key_modifiers(modifiers)
+      symbols = modifiers.map(&:to_sym)
+      return symbols unless options.mac_option_is_meta && symbols.include?(:option)
+
+      (symbols - [:option]) | [:meta]
     end
   end
 

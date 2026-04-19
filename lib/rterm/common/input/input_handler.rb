@@ -16,7 +16,7 @@ module RTerm
       attr_reader :autowrap, :cursor_hidden, :bracketed_paste_mode, :insert_mode,
                   :origin_mode, :application_cursor_keys_mode, :application_keypad_mode,
                   :color_manager, :cursor_style, :cursor_blink, :reverse_wraparound,
-                  :title, :icon_name, :images
+                  :title, :icon_name, :title_stack, :images
 
       def initialize(buffer_set, parser, unicode_handler = nil, options = {})
         if unicode_handler.is_a?(Hash)
@@ -43,6 +43,7 @@ module RTerm
         @sgr_mouse_mode = false
         @utf8_mouse_mode = false
         @urxvt_mouse_mode = false
+        @sgr_pixels_mode = false
         @left_right_margin_mode = false
         @left_margin = 0
         @right_margin = nil
@@ -57,6 +58,7 @@ module RTerm
         @images = []
         @title = ""
         @icon_name = ""
+        @title_stack = []
         @current_link = nil
         @charset_g = 0
         @charsets = [Charsets.fetch(:ascii), Charsets.fetch(:ascii)]
@@ -83,6 +85,7 @@ module RTerm
           right_margin: right_margin,
           reverse_wraparound_mode: @reverse_wraparound,
           sgr_mouse_mode: @sgr_mouse_mode,
+          sgr_pixels_mode: @sgr_pixels_mode,
           urxvt_mouse_mode: @urxvt_mouse_mode,
           utf8_mouse_mode: @utf8_mouse_mode,
           wraparound_mode: @autowrap
@@ -96,12 +99,12 @@ module RTerm
       # @param event [Symbol] :press, :release, :motion
       # @param modifiers [Array<Symbol>] :shift, :meta, :ctrl
       # @return [String, nil]
-      def mouse_report(button:, col:, row:, event: :press, modifiers: [])
+      def mouse_report(button:, col:, row:, event: :press, modifiers: [], pixel_col: nil, pixel_row: nil)
         return nil unless @mouse_tracking_mode
 
         code = mouse_button_code(button, event, modifiers)
         report = if @sgr_mouse_mode
-                   sgr_mouse_report(code, col, row, event)
+                   sgr_mouse_report(code, pixel_col || col, pixel_row || row, event)
                  elsif @urxvt_mouse_mode
                    urxvt_mouse_report(code, col, row)
                  else
@@ -1142,6 +1145,8 @@ module RTerm
           @sgr_mouse_mode ? 1 : 2
         when 1015
           @urxvt_mouse_mode ? 1 : 2
+        when 1016
+          @sgr_pixels_mode ? 1 : 2
         when 47, 1047, 1049
           @buffer_set.active.equal?(@buffer_set.alt) ? 1 : 2
         when 2004
@@ -1191,6 +1196,9 @@ module RTerm
           @sgr_mouse_mode = true
         when 1015
           @urxvt_mouse_mode = true
+        when 1016
+          @sgr_pixels_mode = true
+          @sgr_mouse_mode = true
         when 47, 1047
           @buffer_set.activate_alt_buffer(clear: true)
         when 1048
@@ -1235,6 +1243,8 @@ module RTerm
           @sgr_mouse_mode = false
         when 1015
           @urxvt_mouse_mode = false
+        when 1016
+          @sgr_pixels_mode = false
         when 47, 1047
           @buffer_set.activate_normal_buffer
         when 1048
@@ -1271,6 +1281,7 @@ module RTerm
         @sgr_mouse_mode = false
         @utf8_mouse_mode = false
         @urxvt_mouse_mode = false
+        @sgr_pixels_mode = false
         @left_right_margin_mode = false
         @left_margin = 0
         @right_margin = buf.cols - 1
@@ -1280,6 +1291,7 @@ module RTerm
         @images.clear
         @title = ""
         @icon_name = ""
+        @title_stack.clear
         @current_link = nil
         @charset_g = 0
         @charsets = [Charsets.fetch(:ascii), Charsets.fetch(:ascii)]
@@ -1325,7 +1337,28 @@ module RTerm
           emit(:data, "\e]L#{@icon_name}\a")
         when 21
           emit(:data, "\e]l#{@title}\a")
+        when 22
+          save_title_stack(values[1] || 0)
+        when 23
+          restore_title_stack(values[1] || 0)
         end
+      end
+
+      def save_title_stack(target)
+        @title_stack << {
+          target: target.to_i,
+          title: @title,
+          icon_name: @icon_name
+        }
+      end
+
+      def restore_title_stack(target)
+        entry = @title_stack.pop
+        return unless entry
+
+        target = target.to_i
+        set_icon_name(entry[:icon_name]) if target.zero? || target == 1
+        set_title(entry[:title]) if target.zero? || target == 2
       end
 
       def handle_palette_osc(data)

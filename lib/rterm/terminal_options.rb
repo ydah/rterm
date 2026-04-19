@@ -14,6 +14,7 @@ module RTerm
       cursor_inactive_style: :outline,
       allow_proposed_api: false,
       allow_transparency: false,
+      alternate_scroll_mode: true,
       disable_stdin: false,
       draw_bold_text_in_bright_colors: true,
       fast_scroll_modifier: :alt,

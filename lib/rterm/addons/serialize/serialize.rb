@@ -196,6 +196,7 @@ module RTerm
         {
           "title" => handler.title,
           "icon_name" => handler.icon_name,
+          "title_stack" => deep_dup(handler.title_stack),
           "modes" => deep_dup(@terminal.modes),
           "cursor_style" => handler.cursor_style.to_s,
           "cursor_blink" => handler.cursor_blink,
@@ -256,6 +257,7 @@ module RTerm
         handler = @terminal.internal.input_handler
         handler.instance_variable_set(:@title, data["title"].to_s)
         handler.instance_variable_set(:@icon_name, data["icon_name"].to_s)
+        handler.instance_variable_set(:@title_stack, symbolize_array(data["title_stack"] || []))
         restore_modes(handler, stringify_keys(data["modes"] || {}))
         restore_cursor_state(handler, data)
         restore_parser_state(data["parser"] || {})
@@ -349,6 +351,7 @@ module RTerm
           "@origin_mode" => "origin_mode",
           "@reverse_wraparound" => "reverse_wraparound_mode",
           "@sgr_mouse_mode" => "sgr_mouse_mode",
+          "@sgr_pixels_mode" => "sgr_pixels_mode",
           "@urxvt_mouse_mode" => "urxvt_mouse_mode",
           "@utf8_mouse_mode" => "utf8_mouse_mode",
           "@autowrap" => "wraparound_mode"
@@ -455,6 +458,7 @@ module RTerm
         result << "\e[?1005h" if modes[:utf8_mouse_mode]
         result << "\e[?1006h" if modes[:sgr_mouse_mode]
         result << "\e[?1015h" if modes[:urxvt_mouse_mode]
+        result << "\e[?1016h" if modes[:sgr_pixels_mode]
         result
       end
 
@@ -688,6 +692,10 @@ module RTerm
 
       def symbolize_image_keys(images)
         images.map { |image| symbolize_hash(image) }
+      end
+
+      def symbolize_array(values)
+        Array(values).map { |value| symbolize_hash(value) }
       end
     end
   end

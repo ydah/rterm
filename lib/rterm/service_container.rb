@@ -48,6 +48,7 @@ module RTerm
     BUFFER_SERVICE = :buffer_service
     OPTIONS_SERVICE = :options_service
     LOG_SERVICE = :log_service
+    CHAR_SIZE_SERVICE = :char_size_service
     UNICODE_SERVICE = :unicode_service
     CHARSET_SERVICE = :charset_service
     CORE_SERVICE = :core_service

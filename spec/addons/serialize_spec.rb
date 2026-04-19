@@ -298,6 +298,24 @@ RSpec.describe RTerm::Addon::Serialize do
       expect(restored.selection).to eq("ell")
     end
 
+    it "restores title stack state" do
+      terminal.write("\e]1;Icon1\a")
+      terminal.write("\e]2;Title1\a")
+      terminal.write("\e[22;0t")
+      terminal.write("\e]1;Icon2\a")
+      terminal.write("\e]2;Title2\a")
+      snapshot = serializer.snapshot
+      restored = RTerm::Terminal.new(cols: 80, rows: 24)
+      restored_serializer = described_class.new
+      restored.load_addon(restored_serializer)
+
+      restored_serializer.restore(snapshot)
+      restored.write("\e[23;0t")
+
+      expect(restored.icon_name).to eq("Icon1")
+      expect(restored.title).to eq("Title1")
+    end
+
     it "restores search addon state and decorations when the addon is loaded" do
       search = RTerm::Addon::Search.new
       terminal.load_addon(search)
