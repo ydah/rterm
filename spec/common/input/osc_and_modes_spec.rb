@@ -14,6 +14,26 @@ RSpec.describe "OSC handlers and DEC private modes" do
     expect(colors.cursor).to eq("#00ff00")
   end
 
+  it "responds to OSC dynamic color queries" do
+    responses = []
+    terminal.on(:data) { |data| responses << data }
+    terminal.write("\e]10;#112233\a")
+    terminal.write("\e]11;#445566\a")
+    terminal.write("\e]12;#778899\a")
+
+    terminal.write("\e]10;?\a")
+    terminal.write("\e]11;?\a")
+    terminal.write("\e]12;?\a")
+
+    expect(responses).to eq(
+      [
+        "\e]10;rgb:1111/2222/3333\a",
+        "\e]11;rgb:4444/5555/6666\a",
+        "\e]12;rgb:7777/8888/9999\a"
+      ]
+    )
+  end
+
   it "updates and resets OSC palette colors" do
     terminal.write("\e]4;1;#ff1111\a")
     colors = terminal.internal.input_handler.color_manager
@@ -21,6 +41,16 @@ RSpec.describe "OSC handlers and DEC private modes" do
 
     terminal.write("\e]104;1\a")
     expect(colors.palette[1]).to eq(RTerm::Theme.new.red)
+  end
+
+  it "responds to OSC palette color queries" do
+    responses = []
+    terminal.on(:data) { |data| responses << data }
+    terminal.write("\e]4;1;#ff1111\a")
+
+    terminal.write("\e]4;1;?\a")
+
+    expect(responses).to eq(["\e]4;1;rgb:ffff/1111/1111\a"])
   end
 
   it "emits hyperlink and clipboard events" do
@@ -33,7 +63,29 @@ RSpec.describe "OSC handlers and DEC private modes" do
     terminal.write("\e]52;c;SGVsbG8=\a")
 
     expect(hyperlink).to eq({ params: "id=1", uri: "https://example.com" })
-    expect(clipboard).to eq({ selection: "c", data: "SGVsbG8=" })
+    expect(clipboard).to include(selection: "c", data: "SGVsbG8=", decoded: "Hello")
+  end
+
+  it "responds to OSC 52 clipboard queries from stored data" do
+    responses = []
+    requests = []
+    terminal.on(:data) { |data| responses << data }
+    terminal.on(:clipboard_request) { |payload| requests << payload }
+    terminal.write("\e]52;c;SGVsbG8=\a")
+
+    terminal.write("\e]52;c;?\a")
+
+    expect(requests).to eq([{ selection: "c" }])
+    expect(responses).to eq(["\e]52;c;SGVsbG8=\a"])
+  end
+
+  it "emits nil decoded clipboard data for invalid OSC 52 base64" do
+    clipboard = nil
+    terminal.on(:clipboard) { |payload| clipboard = payload }
+
+    terminal.write("\e]52;c;not-base64\a")
+
+    expect(clipboard).to include(selection: "c", data: "not-base64", decoded: nil)
   end
 
   it "tracks mouse and focus modes" do
