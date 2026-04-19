@@ -232,5 +232,70 @@ RSpec.describe RTerm::Addon::Serialize do
 
       expect(restored.buffer.active.get_line(0).to_string).to include("state")
     end
+
+    it "restores saved cursor state" do
+      terminal.write("abc\e7de")
+      snapshot = serializer.snapshot
+      restored = RTerm::Terminal.new(cols: 80, rows: 24)
+      restored_serializer = described_class.new
+      restored.load_addon(restored_serializer)
+
+      restored_serializer.restore(snapshot)
+      restored.write("\e8X")
+
+      expect(restored.buffer.active.get_line(0).to_string).to include("abcXe")
+    end
+
+    it "restores parser state across partial OSC strings" do
+      terminal.write("\e]2;Part")
+      snapshot = serializer.snapshot
+      restored = RTerm::Terminal.new(cols: 80, rows: 24)
+      restored_serializer = described_class.new
+      restored.load_addon(restored_serializer)
+
+      restored_serializer.restore(snapshot)
+      restored.write("ial\a")
+
+      expect(restored.title).to eq("Partial")
+    end
+
+    it "restores charset designation state" do
+      terminal.write("\e(0")
+      snapshot = serializer.snapshot
+      restored = RTerm::Terminal.new(cols: 80, rows: 24)
+      restored_serializer = described_class.new
+      restored.load_addon(restored_serializer)
+
+      restored_serializer.restore(snapshot)
+      restored.write("q")
+
+      expect(restored.buffer.active.get_line(0).to_string).to eq("─")
+    end
+
+    it "restores active OSC hyperlink state for future cells" do
+      terminal.write("\e]8;id=1;https://example.com\a")
+      snapshot = serializer.snapshot
+      restored = RTerm::Terminal.new(cols: 80, rows: 24)
+      restored_serializer = described_class.new
+      restored.load_addon(restored_serializer)
+
+      restored_serializer.restore(snapshot)
+      restored.write("A")
+
+      expect(restored.buffer.active.get_line(0).get_cell(0).link).to eq({ params: "id=1", uri: "https://example.com" })
+    end
+
+    it "restores terminal selection state" do
+      terminal.write("hello")
+      terminal.select(1, 0, 3)
+      snapshot = serializer.snapshot
+      restored = RTerm::Terminal.new(cols: 80, rows: 24)
+      restored_serializer = described_class.new
+      restored.load_addon(restored_serializer)
+
+      restored_serializer.restore(snapshot)
+
+      expect(restored.selection).to eq("ell")
+    end
   end
 end
