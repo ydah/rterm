@@ -9,6 +9,8 @@ RSpec.describe RTerm::TerminalOptions do
     expect(options.scrollback).to eq(1000)
     expect(options.cursor_style).to eq(:block)
     expect(options.convert_eol).to be false
+    expect(options.clipboard_enabled).to be true
+    expect(options.clipboard_max_bytes).to eq(1_048_576)
   end
 
   it "accepts overrides and exposes hash-style access" do
