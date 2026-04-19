@@ -181,4 +181,56 @@ RSpec.describe RTerm::Addon::Serialize do
       expect(html).to include("Red")
     end
   end
+
+  describe "#snapshot and #restore" do
+    it "exports a structured snapshot separate from ANSI replay" do
+      terminal.write("Hello \e[31mred\e[0m")
+      terminal.write("\e]2;Snapshot\a")
+
+      snapshot = serializer.snapshot
+
+      expect(snapshot["version"]).to eq(1)
+      expect(snapshot["cols"]).to eq(80)
+      expect(snapshot["buffers"]["normal"]["lines"].first["cells"].first).to include(
+        "char" => "H",
+        "width" => 1
+      )
+      expect(snapshot["state"]["title"]).to eq("Snapshot")
+    end
+
+    it "restores buffer cells, modes, title, links, and images from a structured snapshot" do
+      terminal.write("\e]2;Snapshot\a")
+      terminal.write("\e[?7l")
+      terminal.write("\e]8;id=1;https://example.com\aLink\e]8;;\a ")
+      terminal.write("\e[31mRed\e[0m")
+      terminal.write("\ePqABC\e\\")
+      snapshot = serializer.snapshot
+
+      restored = RTerm::Terminal.new(cols: 10, rows: 2)
+      restored_serializer = described_class.new
+      restored.load_addon(restored_serializer)
+      restored_serializer.restore(snapshot)
+
+      line = restored.buffer.active.get_line(0)
+      expect(restored.cols).to eq(80)
+      expect(restored.title).to eq("Snapshot")
+      expect(restored.modes[:wraparound_mode]).to be false
+      expect(line.to_string).to include("Link Red")
+      expect(line.get_cell(0).link).to eq({ params: "id=1", uri: "https://example.com" })
+      expect(line.get_cell(5).fg_color_mode).to eq(:p16)
+      expect(restored.images.first[:protocol]).to eq(:sixel)
+    end
+
+    it "aliases deserialize to restore" do
+      terminal.write("state")
+      snapshot = serializer.snapshot
+      restored = RTerm::Terminal.new
+      restored_serializer = described_class.new
+      restored.load_addon(restored_serializer)
+
+      restored_serializer.deserialize(snapshot)
+
+      expect(restored.buffer.active.get_line(0).to_string).to include("state")
+    end
+  end
 end
