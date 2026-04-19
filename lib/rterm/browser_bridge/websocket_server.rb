@@ -52,6 +52,27 @@ module RTerm
           config
         end
 
+        # Applies production-oriented BrowserBridge defaults while leaving
+        # application-specific origin and authentication policy to the caller.
+        # @yield [Config]
+        # @return [Config]
+        def configure_secure_defaults
+          configure do |config|
+            config.max_message_bytes = 64 * 1024
+            config.heartbeat_timeout = 30
+            config.rate_limit = { interval: 1.0, limit: 200 }
+            config.attach_policy = :single
+            config.output_queue_limit = 1_048_576
+            config.binary_mode = :auto
+            config.terminal_options = (config.terminal_options || {}).merge(
+              clipboard_enabled: false,
+              clipboard_max_bytes: 64 * 1024
+            )
+
+            yield config if block_given?
+          end
+        end
+
         # @return [SessionManager]
         def session_manager
           @session_manager ||= SessionManager.new(
@@ -94,13 +115,18 @@ module RTerm
 
         def wire_socket(socket)
           binary_output = false
-          session_manager.on_output do |session_id, data|
+          output_subscription = session_manager.on_output do |session_id, data|
             socket.send(
               binary_output ? ProtocolHandler.encode_binary(:output, data, session_id: session_id) : ProtocolHandler.output(session_id, data)
             )
           end
-          session_manager.on_exit do |session_id, code|
+          exit_subscription = session_manager.on_exit do |session_id, code|
             socket.send(ProtocolHandler.session_exit(session_id, code))
+          end
+
+          socket.on(:close) do |_event|
+            output_subscription.dispose
+            exit_subscription.dispose
           end
 
           socket.on(:message) do |event|

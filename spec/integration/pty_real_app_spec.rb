@@ -18,7 +18,7 @@ RSpec.describe "PTY real application integration" do
 
     _terminal, _raw, status = run_pty_app(
       vim,
-      ["-Nu", "NONE", "-n", "+set nomore", "+qa!"],
+      ["-Nu", "NONE", "-n", "-i", "NONE", "+set nomore", "+qa!"],
       timeout: 3.0
     )
 

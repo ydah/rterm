@@ -78,6 +78,27 @@ RSpec.describe RTerm::BrowserBridge::WebSocketServer do
     expect(manager.max_sessions).to eq(3)
   end
 
+  it "applies secure defaults and allows overrides" do
+    described_class.configure_secure_defaults do |config|
+      config.allowed_origins = ["https://app.example"]
+      config.rate_limit = { interval: 2.0, limit: 10 }
+      config.terminal_options = config.terminal_options.merge(scrollback: 5_000)
+    end
+
+    expect(described_class.config.allowed_origins).to eq(["https://app.example"])
+    expect(described_class.config.max_message_bytes).to eq(64 * 1024)
+    expect(described_class.config.heartbeat_timeout).to eq(30)
+    expect(described_class.config.rate_limit).to eq({ interval: 2.0, limit: 10 })
+    expect(described_class.config.attach_policy).to eq(:single)
+    expect(described_class.config.output_queue_limit).to eq(1_048_576)
+    expect(described_class.config.binary_mode).to eq(:auto)
+    expect(described_class.config.terminal_options).to include(
+      clipboard_enabled: false,
+      clipboard_max_bytes: 64 * 1024,
+      scrollback: 5_000
+    )
+  end
+
   it "checks allowed origins" do
     described_class.configure do |config|
       config.allowed_origins = ["https://example.com"]
@@ -133,6 +154,20 @@ RSpec.describe RTerm::BrowserBridge::WebSocketServer do
     expect(decoded).to eq({ type: "output", session_id: session_id, payload: { "data" => "abc" } })
   end
 
+  it "disposes socket callbacks when the socket closes" do
+    socket = FakeSocket.new
+    described_class.send(:wire_socket, socket)
+    session_id = described_class.session_manager.create_session
+
+    described_class.session_manager.queue_output(session_id, "before")
+    sent_count = socket.sent.length
+
+    socket.emit_close
+    described_class.session_manager.queue_output(session_id, "after")
+
+    expect(socket.sent.length).to eq(sent_count)
+  end
+
   class FakeSocket
     attr_reader :sent
 
@@ -151,6 +186,10 @@ RSpec.describe RTerm::BrowserBridge::WebSocketServer do
 
     def emit_message(data)
       @handlers.fetch(:message).call(FakeMessage.new(data))
+    end
+
+    def emit_close
+      @handlers.fetch(:close).call(Object.new)
     end
   end
 
