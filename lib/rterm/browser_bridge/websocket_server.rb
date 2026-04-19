@@ -15,6 +15,10 @@ module RTerm
         :idle_timeout,
         :authenticator,
         :output_queue_limit,
+        :allowed_origins,
+        :max_message_bytes,
+        :rate_limit,
+        :heartbeat_timeout,
         keyword_init: true
       )
 
@@ -28,7 +32,11 @@ module RTerm
             session_timeout: nil,
             idle_timeout: nil,
             authenticator: nil,
-            output_queue_limit: 1_048_576
+            output_queue_limit: 1_048_576,
+            allowed_origins: [],
+            max_message_bytes: nil,
+            rate_limit: nil,
+            heartbeat_timeout: nil
           )
         end
 
@@ -49,7 +57,10 @@ module RTerm
             session_timeout: config.session_timeout,
             idle_timeout: config.idle_timeout,
             authenticator: config.authenticator,
-            output_queue_limit: config.output_queue_limit
+            output_queue_limit: config.output_queue_limit,
+            max_message_bytes: config.max_message_bytes,
+            rate_limit: config.rate_limit,
+            heartbeat_timeout: config.heartbeat_timeout
           )
         end
 
@@ -60,6 +71,7 @@ module RTerm
           faye = load_faye_websocket
           raise LoadError, "Install faye-websocket to use RTerm::BrowserBridge::WebSocketServer" unless faye
           raise ProtocolError, "Request is not a WebSocket upgrade" unless faye.websocket?(env)
+          raise ProtocolError, "Origin is not allowed" unless origin_allowed?(env)
 
           socket = faye.new(env)
           wire_socket(socket)
@@ -84,11 +96,28 @@ module RTerm
           end
 
           socket.on(:message) do |event|
+            if message_too_large?(event.data)
+              socket.send(ProtocolHandler.error("Message too large", code: "message_too_large"))
+              next
+            end
+
             response = session_manager.process_message(ProtocolHandler.decode_frame(event.data))
             socket.send(response) if response
           rescue ProtocolError => e
-            socket.send(ProtocolHandler.error(e.message))
+            socket.send(ProtocolHandler.error(e.message, code: "protocol_error"))
           end
+        end
+
+        def origin_allowed?(env)
+          allowed = Array(config.allowed_origins)
+          return true if allowed.empty?
+
+          origin = env["HTTP_ORIGIN"]
+          allowed.include?(origin)
+        end
+
+        def message_too_large?(data)
+          config.max_message_bytes && data.to_s.bytesize > config.max_message_bytes
         end
       end
     end
