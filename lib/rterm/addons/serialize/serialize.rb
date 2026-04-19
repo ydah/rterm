@@ -167,6 +167,7 @@ module RTerm
           "y_disp" => buffer.y_disp,
           "scroll_top" => buffer.scroll_top,
           "scroll_bottom" => buffer.scroll_bottom,
+          "saved_cursor" => snapshot_saved_cursor(buffer),
           "lines" => indexes.map { |index| snapshot_line(buffer.lines[index]) }
         }
       end
@@ -198,6 +199,10 @@ module RTerm
           "modes" => deep_dup(@terminal.modes),
           "cursor_style" => handler.cursor_style.to_s,
           "cursor_blink" => handler.cursor_blink,
+          "parser" => snapshot_parser_state,
+          "charset" => snapshot_charset_state(handler),
+          "current_link" => deep_dup(handler.instance_variable_get(:@current_link)),
+          "selection" => deep_dup(@terminal.instance_variable_get(:@selection)),
           "dynamic_colors" => {
             "foreground" => color_manager.foreground,
             "background" => color_manager.background,
@@ -221,6 +226,7 @@ module RTerm
         buffer.y_disp = [[data["y_disp"].to_i, 0].max, buffer.y_base].min
         buffer.scroll_top = [[data["scroll_top"].to_i, 0].max, buffer.rows - 1].min
         buffer.scroll_bottom = [[data["scroll_bottom"].to_i, buffer.scroll_top].max, buffer.rows - 1].min
+        restore_saved_cursor(buffer, data["saved_cursor"] || {})
       end
 
       def restore_line(data, cols)
@@ -251,7 +257,83 @@ module RTerm
         handler.instance_variable_set(:@icon_name, data["icon_name"].to_s)
         restore_modes(handler, stringify_keys(data["modes"] || {}))
         restore_cursor_state(handler, data)
+        restore_parser_state(data["parser"] || {})
+        restore_charset_state(handler, data["charset"] || {})
+        handler.instance_variable_set(:@current_link, symbolize_hash(data["current_link"]))
+        @terminal.instance_variable_set(:@selection, symbolize_hash(data["selection"]))
         restore_dynamic_colors(handler.color_manager, stringify_keys(data["dynamic_colors"] || {}))
+      end
+
+      def snapshot_saved_cursor(buffer)
+        {
+          "x" => buffer.saved_x,
+          "y" => buffer.saved_y,
+          "attr" => buffer.saved_cur_attr ? snapshot_cell(buffer.saved_cur_attr) : nil
+        }
+      end
+
+      def restore_saved_cursor(buffer, data)
+        data = stringify_keys(data)
+        buffer.saved_x = [[data["x"].to_i, 0].max, buffer.cols - 1].min
+        buffer.saved_y = [[data["y"].to_i, 0].max, buffer.rows - 1].min
+        buffer.saved_cur_attr = data["attr"] ? restore_cell(data["attr"]) : nil
+      end
+
+      def snapshot_parser_state
+        parser = @terminal.internal.parser
+        {
+          "current_state" => parser.current_state,
+          "collect" => parser.instance_variable_get(:@collect),
+          "osc_data" => parser.instance_variable_get(:@osc_data).to_s,
+          "osc_id" => parser.instance_variable_get(:@osc_id),
+          "dcs_data" => parser.instance_variable_get(:@dcs_data).to_s,
+          "apc_data" => parser.instance_variable_get(:@apc_data).to_s,
+          "sos_pm_data" => parser.instance_variable_get(:@sos_pm_data).to_s,
+          "sos_pm_kind" => parser.instance_variable_get(:@sos_pm_kind)&.to_s
+        }
+      end
+
+      def restore_parser_state(data)
+        data = stringify_keys(data)
+        parser = @terminal.internal.parser
+        parser.instance_variable_set(:@current_state, data["current_state"].to_i)
+        parser.instance_variable_set(:@collect, data["collect"].to_i)
+        parser.instance_variable_set(:@osc_data, data["osc_data"].to_s)
+        parser.instance_variable_set(:@osc_id, data.fetch("osc_id", -1).to_i)
+        parser.instance_variable_set(:@dcs_data, data["dcs_data"].to_s)
+        parser.instance_variable_set(:@apc_data, data["apc_data"].to_s)
+        parser.instance_variable_set(:@sos_pm_data, data["sos_pm_data"].to_s)
+        parser.instance_variable_set(:@sos_pm_kind, data["sos_pm_kind"]&.to_sym)
+      end
+
+      def snapshot_charset_state(handler)
+        charsets = handler.instance_variable_get(:@charsets)
+        {
+          "active" => handler.instance_variable_get(:@charset_g),
+          "slots" => charsets.map { |charset| charset_name(charset) }
+        }
+      end
+
+      def restore_charset_state(handler, data)
+        data = stringify_keys(data)
+        slots = Array(data["slots"])
+        handler.instance_variable_set(:@charset_g, data["active"].to_i)
+        handler.instance_variable_set(
+          :@charsets,
+          [charset_from_name(slots[0] || :ascii), charset_from_name(slots[1] || :ascii)]
+        )
+      end
+
+      def charset_from_name(name)
+        Common::Charsets::TABLES[name] || Common::Charsets::TABLES[name.to_s] ||
+          Common::Charsets::TABLES[name.to_s.to_sym] || Common::Charsets::ASCII
+      end
+
+      def charset_name(charset)
+        Common::Charsets::TABLES.each do |name, table|
+          return name.to_s if table.equal?(charset)
+        end
+        "ascii"
       end
 
       def restore_modes(handler, modes)
