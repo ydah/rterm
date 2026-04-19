@@ -114,6 +114,36 @@ RSpec.describe RTerm::Pty do
     end
   end
 
+  describe "signal lifecycle" do
+    it "records the terminating signal" do
+      pty = described_class.new(command: RbConfig.ruby, args: ["-e", "sleep 10"])
+
+      expect(pty.kill(:TERM)).to be true
+      pty.wait_for_exit(2)
+      pty.close
+
+      expect(pty.exit_status).to be_nil
+      expect(pty.exit_signal).to eq(Signal.list.fetch("TERM"))
+      expect(pty.alive?).to be false
+    end
+
+    it "can signal the child process group when available" do
+      pty = described_class.new(command: RbConfig.ruby, args: ["-e", "sleep 10"], process_group: true)
+      unless pty.process_group_enabled?
+        reason = pty.process_group_fallback_reason&.class
+        pty.close
+        skip "process groups unavailable for PTY.spawn#{reason ? " (#{reason})" : ""}"
+      end
+
+      expect(pty.process_group_id).to eq(pty.pid)
+      expect(pty.kill(:TERM, group: true)).to be true
+      pty.wait_for_exit(2)
+      pty.close
+
+      expect(pty.exit_signal).to eq(Signal.list.fetch("TERM"))
+    end
+  end
+
   describe "#close" do
     it "cleans up resources" do
       pty = described_class.new(command: "/bin/cat")

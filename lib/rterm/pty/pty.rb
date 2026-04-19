@@ -8,7 +8,7 @@ module RTerm
   class Pty
     DEFAULT_READ_CHUNK_SIZE = 16 * 1024
 
-    attr_reader :pid, :exit_status
+    attr_reader :pid, :exit_status, :exit_signal, :process_group_id
 
     # @param command [String] command to run (default: ENV['SHELL'] || '/bin/bash')
     # @param args [Array<String>] command arguments
@@ -17,17 +17,23 @@ module RTerm
     # @param cols [Integer] terminal columns
     # @param rows [Integer] terminal rows
     # @param read_chunk_size [Integer] maximum bytes read from the PTY per read
+    # @param process_group [Boolean] request a dedicated process group for the child
     def initialize(command: nil, args: [], env: {}, cwd: nil, cols: 80, rows: 24,
-                   read_chunk_size: DEFAULT_READ_CHUNK_SIZE)
+                   read_chunk_size: DEFAULT_READ_CHUNK_SIZE, process_group: false)
       cmd = command || ENV['SHELL'] || '/bin/bash'
-      spawn_args = build_spawn_args(cmd, args, env, cwd)
-      @master, @slave, @pid = ::PTY.spawn(*spawn_args)
+      spawn_args = build_spawn_args(cmd, args, env, cwd, process_group)
+      @process_group_requested = process_group
+      @process_group_fallback_reason = nil
+      @master, @slave, @pid = spawn_pty(spawn_args, process_group)
+      @process_group_id = child_process_group_id
+      @process_group_enabled = process_group && @process_group_id == @pid
       @master.winsize = [rows, cols]
       @read_chunk_size = [read_chunk_size.to_i, 1].max
       @on_data_callbacks = []
       @on_exit_callbacks = []
       @read_thread = nil
       @exit_status = nil
+      @exit_signal = nil
       @process_status = nil
       @exit_notified = false
       @closed = false
@@ -124,11 +130,24 @@ module RTerm
     end
 
     # Send signal to child process
-    def kill(signal = :TERM)
-      Process.kill(signal, @pid)
+    def kill(signal = :TERM, group: false)
+      target = signal_target(group)
+      return false unless target
+
+      Process.kill(signal, target)
       true
     rescue Errno::ESRCH, Errno::ECHILD
       false
+    end
+
+    # @return [Boolean] true when the child has a dedicated process group
+    def process_group_enabled?
+      @process_group_enabled
+    end
+
+    # @return [Exception, nil] spawn failure that caused process group fallback
+    def process_group_fallback_reason
+      @process_group_fallback_reason
     end
 
     # Close the PTY and clean up
@@ -141,7 +160,7 @@ module RTerm
       join_read_thread(timeout)
 
       unless exited?
-        kill(:TERM)
+        kill(:TERM, group: @process_group_enabled)
         wait_for_exit(timeout)
       end
 
@@ -243,12 +262,14 @@ module RTerm
     def record_exit(status)
       callbacks = nil
       code = status.exitstatus
+      signal = status.termsig
 
       @mutex.synchronize do
         return @exit_status if @process_status
 
         @process_status = status
         @exit_status = code
+        @exit_signal = signal
         unless @exit_notified
           @exit_notified = true
           callbacks = @on_exit_callbacks.dup
@@ -277,13 +298,48 @@ module RTerm
       end
     end
 
-    def build_spawn_args(cmd, args, env, cwd)
+    def spawn_pty(spawn_args, process_group)
+      ::PTY.spawn(*spawn_args)
+    rescue Errno::EPERM, NotImplementedError => e
+      raise unless process_group
+
+      @process_group_fallback_reason = e
+      ::PTY.spawn(*without_process_group(spawn_args))
+    end
+
+    def child_process_group_id
+      Process.getpgid(@pid)
+    rescue Errno::ESRCH, Errno::ECHILD, NotImplementedError
+      nil
+    end
+
+    def signal_target(group)
+      return @pid unless group
+      return nil unless @process_group_enabled && @process_group_id
+
+      -@process_group_id
+    end
+
+    def build_spawn_args(cmd, args, env, cwd, process_group)
       spawn_args = []
       spawn_args << stringify_env(env) unless env.empty?
       spawn_args << cmd
       spawn_args.concat(args)
-      spawn_args << { chdir: cwd } if cwd
+      options = {}
+      options[:chdir] = cwd if cwd
+      options[:pgroup] = true if process_group
+      spawn_args << options unless options.empty?
       spawn_args
+    end
+
+    def without_process_group(spawn_args)
+      return spawn_args unless spawn_args.last.is_a?(Hash) && spawn_args.last.key?(:pgroup)
+
+      fallback = spawn_args.dup
+      options = fallback.pop.dup
+      options.delete(:pgroup)
+      fallback << options unless options.empty?
+      fallback
     end
   end
 
