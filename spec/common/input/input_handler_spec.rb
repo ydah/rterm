@@ -50,6 +50,56 @@ RSpec.describe RTerm::Common::InputHandler do
       expect(cell_at(2, 0).width).to eq(0)
       expect(buffer.x).to eq(4)
     end
+
+    it "combines a standalone combining mark with the previous cell" do
+      parse("e")
+      parse("\u0301")
+
+      expect(line_text(0)).to eq("e\u0301")
+      expect(cell_at(0, 0).char).to eq("e\u0301")
+      expect(cell_at(0, 0).width).to eq(1)
+      expect(buffer.x).to eq(1)
+    end
+
+    it "combines a standalone combining mark with the base of a wide cell" do
+      parse("語")
+      parse("\u0301")
+
+      expect(line_text(0)).to eq("語\u0301")
+      expect(cell_at(0, 0).char).to eq("語\u0301")
+      expect(cell_at(0, 0).width).to eq(2)
+      expect(cell_at(1, 0).width).to eq(0)
+      expect(buffer.x).to eq(2)
+    end
+
+    it "clears a wide character when overwriting its right half" do
+      parse("語B")
+      buffer.x = 1
+      parse("A")
+
+      expect(line_text(0)).to eq(" AB")
+      expect(cell_at(0, 0).char).to eq("")
+      expect(cell_at(0, 0).width).to eq(1)
+      expect(cell_at(1, 0).char).to eq("A")
+      expect(cell_at(1, 0).width).to eq(1)
+    end
+
+    context "when a wide character starts at the final column" do
+      let(:cols) { 4 }
+      let(:rows) { 2 }
+
+      it "wraps before printing the wide character" do
+        parse("abc")
+        parse("語")
+
+        expect(line_text(0)).to eq("abc")
+        expect(buffer.get_line(0).is_wrapped).to be true
+        expect(cell_at(0, 1).char).to eq("語")
+        expect(cell_at(1, 1).width).to eq(0)
+        expect(buffer.y).to eq(1)
+        expect(buffer.x).to eq(2)
+      end
+    end
   end
 
   describe "autowrap" do
@@ -358,6 +408,15 @@ RSpec.describe RTerm::Common::InputHandler do
         parse("\e[2@")
         expect(line_text(0)).to eq("AB  CDE")
       end
+
+      it "does not split a wide character when inserting into its right half" do
+        parse("A語BC")
+        buffer.x = 2
+        parse("\e[1@")
+
+        expect(line_text(0)).to eq("A   BC")
+        expect((0...6).map { |x| cell_at(x, 0).width }).to eq([1, 1, 1, 1, 1, 1])
+      end
     end
 
     describe "DCH (P) - delete characters" do
@@ -366,6 +425,15 @@ RSpec.describe RTerm::Common::InputHandler do
         buffer.x = 1
         parse("\e[2P")
         expect(line_text(0)).to eq("ADE")
+      end
+
+      it "does not leave a wide spacer when deleting the left half" do
+        parse("A語BC")
+        buffer.x = 1
+        parse("\e[1P")
+
+        expect(line_text(0)).to eq("A BC")
+        expect((0...5).map { |x| cell_at(x, 0).width }).to eq([1, 1, 1, 1, 1])
       end
     end
 
@@ -635,6 +703,18 @@ RSpec.describe RTerm::Common::InputHandler do
 
         parse("\e[4l")
         expect(handler.insert_mode).to be false
+      end
+
+      it "inserts a double-width character without splitting following cells" do
+        parse("ABCD")
+        buffer.x = 1
+        parse("\e[4h")
+        parse("語")
+
+        expect(line_text(0)).to eq("A語BCD")
+        expect(cell_at(1, 0).width).to eq(2)
+        expect(cell_at(2, 0).width).to eq(0)
+        expect(cell_at(3, 0).char).to eq("B")
       end
     end
 

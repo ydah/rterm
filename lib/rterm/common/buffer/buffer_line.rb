@@ -40,7 +40,23 @@ module RTerm
       def set_cell(x, cell)
         return if x < 0 || x >= @cells.length
 
+        if cell.width.zero?
+          @cells[x].copy_from(cell)
+          return
+        end
+
+        fill = CellData.new
+        if cell.width == 2 && x == @cells.length - 1
+          clear_wide_cell_at(x, fill)
+          @cells[x].copy_from(fill)
+          return
+        end
+
+        clear_wide_cell_at(x, fill)
+        clear_wide_cell_at(x + 1, fill) if cell.width == 2
+
         @cells[x].copy_from(cell)
+        set_spacer_cell(x + 1, cell) if cell.width == 2
       end
 
       # Inserts blank cells at the given position, shifting existing cells right.
@@ -52,6 +68,7 @@ module RTerm
         return if x < 0 || x >= @cells.length
 
         count = [count, @cells.length - x].min
+        clear_split_wide_char_at_insert(x, fill)
 
         # Shift cells right
         (@cells.length - 1).downto(x + count) do |i|
@@ -62,6 +79,7 @@ module RTerm
         count.times do |i|
           @cells[x + i].copy_from(fill)
         end
+        normalize_wide_cells(fill)
       end
 
       # Deletes cells at the given position, shifting remaining cells left.
@@ -73,6 +91,7 @@ module RTerm
         return if x < 0 || x >= @cells.length
 
         count = [count, @cells.length - x].min
+        clear_split_wide_chars_in_delete_range(x, x + count, fill)
 
         # Shift cells left
         (x...(@cells.length - count)).each do |i|
@@ -83,6 +102,7 @@ module RTerm
         ((@cells.length - count)...@cells.length).each do |i|
           @cells[i].copy_from(fill)
         end
+        normalize_wide_cells(fill)
       end
 
       # Replaces cells in the given range with the fill cell.
@@ -90,7 +110,14 @@ module RTerm
       # @param end_col [Integer] the end column (exclusive)
       # @param fill [CellData] the fill cell
       def replace_cells(start_col, end_col, fill)
+        start_col = [[start_col, 0].max, @cells.length].min
         end_col = [end_col, @cells.length].min
+        end_col = [end_col, 0].max
+        return if start_col >= end_col
+
+        start_col -= 1 if start_col.positive? && right_half_of_wide_char?(start_col)
+        end_col += 1 if end_col < @cells.length && end_col.positive? && @cells[end_col - 1].width == 2
+
         (start_col...end_col).each do |i|
           @cells[i].copy_from(fill)
         end
@@ -106,6 +133,7 @@ module RTerm
           end
         elsif cols < @cells.length
           @cells = @cells[0, cols]
+          normalize_wide_cells(fill || CellData.new)
         end
       end
 
@@ -158,6 +186,74 @@ module RTerm
         new_line.instance_variable_set(:@cells, @cells.map(&:clone))
         new_line.instance_variable_set(:@is_wrapped, @is_wrapped)
         new_line
+      end
+
+      private
+
+      def set_spacer_cell(x, source)
+        return if x >= @cells.length
+
+        spacer = source.clone
+        spacer.char = ""
+        spacer.width = 0
+        @cells[x].copy_from(spacer)
+      end
+
+      def clear_wide_cell_at(x, fill)
+        return if x < 0 || x >= @cells.length
+
+        if right_half_of_wide_char?(x)
+          @cells[x - 1].copy_from(fill)
+          @cells[x].copy_from(fill)
+        elsif @cells[x].width == 2 && x + 1 < @cells.length
+          @cells[x + 1].copy_from(fill)
+        end
+      end
+
+      def clear_split_wide_char_at_insert(x, fill)
+        return unless right_half_of_wide_char?(x)
+
+        @cells[x - 1].copy_from(fill)
+        @cells[x].copy_from(fill)
+      end
+
+      def clear_split_wide_chars_in_delete_range(start_col, end_col, fill)
+        (0...(@cells.length - 1)).each do |i|
+          next unless @cells[i].width == 2
+
+          span_start = i
+          span_end = i + 2
+          intersects = span_start < end_col && start_col < span_end
+          fully_deleted = start_col <= span_start && span_end <= end_col
+          next unless intersects && !fully_deleted
+
+          @cells[i].copy_from(fill)
+          @cells[i + 1].copy_from(fill)
+        end
+      end
+
+      def normalize_wide_cells(fill)
+        i = 0
+        while i < @cells.length
+          cell = @cells[i]
+          if cell.width.zero?
+            @cells[i].copy_from(fill) unless right_half_of_wide_char?(i)
+            i += 1
+          elsif cell.width == 2
+            if i + 1 >= @cells.length || @cells[i + 1].width != 0
+              @cells[i].copy_from(fill)
+              i += 1
+            else
+              i += 2
+            end
+          else
+            i += 1
+          end
+        end
+      end
+
+      def right_half_of_wide_char?(x)
+        x.positive? && @cells[x].width.zero? && @cells[x - 1].width == 2
       end
     end
   end
