@@ -496,11 +496,87 @@ RSpec.describe "specification compatibility APIs" do
     expect(terminal.getSelection).to eq("")
   end
 
+  it "supports addMarker alias with disposal callback" do
+    terminal = RTerm::Terminal.new(cols: 4, rows: 2)
+    disposed = []
+
+    marker = terminal.addMarker do |disposed_marker|
+      disposed << disposed_marker
+    end
+
+    expect(marker).to be_a(RTerm::Terminal::Marker)
+    marker.dispose
+
+    expect(disposed).to eq([marker])
+  end
+
+  it "supports compatibility string resources" do
+    terminal = RTerm::Terminal.new
+
+    expect(terminal.strings["promptLabel"]).to eq("Terminal input")
+    expect(terminal.strings["tooMuchOutput"]).to include("output is too large")
+  end
+
+  it "returns terminal element and textarea compatibility properties" do
+    terminal = RTerm::Terminal.new
+    container = Object.new
+
+    terminal.open(container)
+
+    expect(terminal.element).to equal(container)
+    expect(terminal.textarea).to be_nil
+  end
+
+  it "supports registerLinkProvider compatibility alias" do
+    terminal = RTerm::Terminal.new
+
+    terminal.registerLinkProvider do |_text, row|
+      next [] if row != 0
+
+      [{ url: "https://example.local/custom", row: row, col: 0, length: 25 }]
+    end
+
+    addon = terminal.instance_variable_get(:@addons).find { |item| item.is_a?(RTerm::Addon::WebLinks) }
+    expect(addon).not_to be_nil
+    expect(addon.find_links).to include(hash_including(url: "https://example.local/custom"))
+  end
+
+  it "supports registerDecoration alias" do
+    terminal = RTerm::Terminal.new
+    marker = terminal.registerMarker
+
+    decoration = terminal.registerDecoration(marker, overviewRulerOptions: { color: "#ff00ff" })
+
+    expect(terminal.instance_variable_get(:@decorations)).to include(decoration)
+    expect(decoration.options).to eq(overviewRulerOptions: { color: "#ff00ff" })
+
+    decoration.dispose
+    expect(terminal.instance_variable_get(:@decorations)).not_to include(decoration)
+  end
+
+  it "supports clearTextureAtlas as no-op compatibility API" do
+    terminal = RTerm::Terminal.new
+
+    expect(terminal.clearTextureAtlas).to be(true)
+  end
+
   it "supports getMarkers alias" do
     terminal = RTerm::Terminal.new
     marker = terminal.registerMarker
 
     expect(terminal.getMarkers).to include(marker)
+  end
+
+  it "supports onBufferChange event for buffer switching" do
+    terminal = RTerm::Terminal.new(cols: 4, rows: 2)
+    seen = []
+
+    terminal.onBufferChange { |event| seen << event[:active].type }
+
+    terminal.internal.buffer_set.activate_alt_buffer
+    terminal.internal.buffer_set.activate_normal_buffer
+
+    expect(seen).to eq(["alternate", "normal"])
   end
 
   it "supports copy API and emits clipboard payload" do

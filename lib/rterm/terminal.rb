@@ -8,33 +8,96 @@ module RTerm
   class Terminal
     URL_SELECTION_REGEX = %r{(?<![\w@])https?://[^\s<>\[\]{}|\\^`"']+}i
     URL_TRAILING_PUNCTUATION = ".,;:!?"
+    LOCALIZABLE_STRINGS = {
+      "promptLabel" => "Terminal input",
+      "tooMuchOutput" => "Terminal output is too large to announce"
+    }.freeze
 
     class Marker
+      include Common::EventEmitter
+
       def initialize(line)
         @line = line
         @disposed = false
-        @on_dispose = nil
       end
 
       attr_accessor :line
-
-      def disposed?
-        @disposed
-      end
 
       def dispose
         return if @disposed
 
         @disposed = true
-        @on_dispose&.call(self)
+        emit(:dispose, self)
         true
       end
 
       def on_dispose(&block)
-        @on_dispose = block
-        block.call(self) if @disposed
+        return unless block
+
+        on(:dispose, &block)
       end
 
+      def disposed?
+        @disposed
+      end
+
+      alias isDisposed disposed?
+      alias is_disposed? disposed?
+      alias onDispose on_dispose
+    end
+
+    class Decoration
+      include Common::EventEmitter
+
+      def initialize(marker, options = {})
+        @marker = marker
+        @options = options || {}
+        @disposed = false
+      end
+
+      def element
+        nil
+      end
+
+      attr_reader :marker
+
+      def disposed?
+        @disposed
+      end
+
+      alias isDisposed disposed?
+      alias is_disposed? disposed?
+
+      def dispose
+        return if @disposed
+
+        @disposed = true
+        emit(:dispose)
+        true
+      end
+
+      def on_render(&block)
+        on(:render, &block)
+      end
+
+      def on_render_event(&block)
+        on_render(&block)
+      end
+
+      def on_dispose(&block)
+        on(:dispose, &block)
+      end
+
+      def options
+        return {} if @options.nil?
+
+        {
+          overviewRulerOptions: @options[:overviewRulerOptions] || @options["overviewRulerOptions"]
+        }
+      end
+
+      alias onRender on_render
+      alias onRenderEvent on_render_event
       alias onDispose on_dispose
     end
 
@@ -47,18 +110,25 @@ module RTerm
       @disposed = false
       @addons = []
       @selection = nil
+      @textarea = nil
       @custom_key_event_handler = nil
       @custom_wheel_event_handler = nil
       @custom_mouse_event_handler = nil
       @custom_context_menu_event_handler = nil
       @focused = false
       @markers = []
+      @decorations = []
       @character_joiners = {}
       @next_character_joiner_id = 1
       @last_scroll_position = @terminal.buffer_set.active.y_disp
+      @buffer_namespace = BufferNamespace.new(@terminal.buffer_set)
 
       @terminal.on(:scroll) do |position|
         on_terminal_scroll(position)
+      end
+
+      @terminal.buffer_set.on(:buffer_change) do |payload|
+        @buffer_namespace&.emit(:buffer_change, payload)
       end
     end
 
@@ -70,6 +140,22 @@ module RTerm
     # @return [Integer] number of rows
     def rows
       @terminal.rows
+    end
+
+    # xterm.js compatibility DOM-like container.
+    def element
+      @container
+    end
+
+    # xterm.js compatibility hidden textarea element.
+    def textarea
+      @textarea
+    end
+
+    # xterm.js localizable strings.
+    # @return [Hash]
+    def strings
+      LOCALIZABLE_STRINGS.dup
     end
 
     # --- Data I/O ---
@@ -273,6 +359,71 @@ module RTerm
       register_marker(line)
     end
 
+    # xterm.js compatibility marker API.
+    #
+    # @param line [Integer, nil] visible line, default is the cursor line
+    # @yield [Marker] called when marker is disposed
+    # @return [Marker, nil]
+    def add_marker(line = nil)
+      marker = register_marker(line)
+      return marker unless marker
+
+      if block_given?
+        marker.on_dispose do |disposed_marker|
+          yield(disposed_marker)
+        end
+      end
+
+      marker
+    end
+
+    # xterm.js compatibility alias.
+    # @param line [Integer, nil] visible line, default is the cursor line
+    # @yield [Marker] called when marker is disposed
+    # @return [Marker, nil]
+    def addMarker(line = nil, &block)
+      add_marker(line, &block)
+    end
+
+    # xterm.js compatibility API to register link providers.
+    # The WebLinks addon is loaded on demand.
+    def register_link_provider(provider = nil, &block)
+      require_relative "addons/web_links/web_links" unless defined?(RTerm::Addon::WebLinks)
+      web_links_addon.register_link_provider(provider, &block)
+    end
+
+    # xterm.js compatibility alias.
+    def registerLinkProvider(provider = nil, &block)
+      register_link_provider(provider, &block)
+    end
+
+    # xterm.js compatibility API to register marker decorations.
+    def register_decoration(marker_or_options = nil, options = nil)
+      normalized_options = {}
+      marker = nil
+
+      if marker_or_options.is_a?(Marker)
+        marker = marker_or_options
+        normalized_options = options.to_h if options
+      else
+        normalized_options = marker_or_options.to_h if marker_or_options.respond_to?(:to_h)
+        marker = normalized_options.delete(:marker) || normalized_options.delete("marker")
+      end
+
+      marker ||= register_marker
+      return nil unless marker
+
+      decoration = Decoration.new(marker, normalized_options)
+      @decorations << decoration
+      decoration.on_dispose { @decorations.delete(decoration) }
+      decoration
+    end
+
+    # xterm.js compatibility alias.
+    def registerDecoration(marker_or_options = nil, options = nil)
+      register_decoration(marker_or_options, options)
+    end
+
     # xterm.js compatibility alias.
     # @param line [Integer, nil] visible line, default is the cursor line
     # @return [Marker, nil]
@@ -302,7 +453,7 @@ module RTerm
     # Returns the buffer namespace for accessing buffer content.
     # @return [BufferNamespace]
     def buffer
-      @buffer_namespace ||= BufferNamespace.new(@terminal.buffer_set)
+      @buffer_namespace
     end
 
     # Returns parser hooks for custom escape sequence handling.
@@ -321,6 +472,17 @@ module RTerm
     # @return [Hash<Symbol, Boolean>]
     def modes
       @terminal.input_handler.modes
+    end
+
+    # xterm.js compatibility event registration for active buffer change.
+    # @return [Common::Disposable]
+    def on_buffer_change(&block)
+      @terminal.buffer_set.on(:buffer_change, &block)
+    end
+
+    # xterm.js compatibility alias.
+    def onBufferChange(&block)
+      on_buffer_change(&block)
     end
 
     # Returns the current terminal options.
@@ -381,6 +543,15 @@ module RTerm
     def images
       @terminal.input_handler.images
     end
+
+    # Clears cached texture atlas resources (headless compatibility no-op).
+    # @return [Boolean]
+    def clear_texture_atlas
+      true
+    end
+
+    # xterm.js compatibility alias.
+    alias clearTextureAtlas clear_texture_atlas
 
     # Resolves renderer-facing colors for a cell without mutating buffer attributes.
     # @param cell [Common::CellData]
@@ -653,6 +824,7 @@ module RTerm
     # Opens terminal on a host element (no-op for headless runtime).
     def open(_container = nil, focus = false)
       @container = _container
+      @textarea = nil
       @focused = false if focus == false
       focus() if focus
       true
@@ -1185,6 +1357,17 @@ module RTerm
     end
     # --- Addons ---
 
+    def web_links_addon
+      existing = @addons.find do |addon|
+        addon.is_a?(Addon::WebLinks)
+      end
+      return existing if existing
+
+      addon = Addon::WebLinks.new
+      load_addon(addon)
+      addon
+    end
+
     # Loads an addon into the terminal.
     # @param addon [Addon::Base] the addon to load
     def load_addon(addon)
@@ -1589,6 +1772,8 @@ module RTerm
 
   # Provides access to active/normal/alt buffers with a clean API.
   class BufferNamespace
+    include Common::EventEmitter
+
     # @return [Common::Buffer] the currently active buffer
     def active
       @buffer_set.active
@@ -1606,6 +1791,13 @@ module RTerm
 
     # xterm.js compatibility alias.
     alias alternate alt
+
+    # xterm.js compatibility alias for buffer change events.
+    def on_buffer_change(&block)
+      on(:buffer_change, &block)
+    end
+
+    alias onBufferChange on_buffer_change
 
     private
 
