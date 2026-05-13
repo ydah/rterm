@@ -122,7 +122,7 @@ module RTerm
         link = resolve_link(link_or_index)
         return false unless link
 
-        link[:activate]&.call(link)
+        invoke_link_callback(link[:activate], link)
         emit_link_lifecycle(:activate, link)
         @link_handlers.each { |handler| handler.call(link) }
         true
@@ -136,7 +136,7 @@ module RTerm
         link = resolve_link(link_or_index, row: row, col: col)
         return false unless link
 
-        link[:hover]&.call(link)
+        invoke_link_callback(link[:hover], link)
         emit_link_lifecycle(:hover, link)
         true
       end
@@ -147,7 +147,7 @@ module RTerm
         link = resolve_link(link_or_index, row: row, col: col)
         return false unless link
 
-        link[:leave]&.call(link)
+        invoke_link_callback(link[:leave], link)
         emit_link_lifecycle(:leave, link)
         true
       end
@@ -186,15 +186,21 @@ module RTerm
       end
 
       def call_provider(provider, line)
-        if provider.respond_to?(:provide_links)
+        if provider.respond_to?(:provideLinks)
+          call_row_provider(provider, line)
+        elsif provider.respond_to?(:provide_links)
           provider.provide_links(line[:text], line[:start_row])
         else
           provider.call(line[:text], line[:start_row])
         end
+      rescue StandardError
+        []
       end
 
       def call_provider_async(provider, line, request, &callback)
-        result = if provider.respond_to?(:provide_links_async)
+        result = if provider.respond_to?(:provideLinks)
+                   call_row_provider_async(provider, line, request, &callback)
+                 elsif provider.respond_to?(:provide_links_async)
                    provider.provide_links_async(line[:text], line[:start_row], request, &callback) || ASYNC_PENDING
                  elsif provider.respond_to?(:provide_links)
                    call_provider_method(provider.method(:provide_links), line, request)
@@ -204,6 +210,25 @@ module RTerm
         callback.call(result) unless async_pending?(result)
       rescue StandardError
         callback.call([])
+      end
+
+      def call_row_provider(provider, line)
+        provided = false
+        links = nil
+        result = provider.provideLinks(line[:start_row] + 1, lambda { |items|
+          provided = true
+          links = items
+        })
+        return links if provided
+        return [] if result.nil? || async_pending?(result)
+
+        result
+      end
+
+      def call_row_provider_async(provider, line, request, &callback)
+        provider.provideLinks(line[:start_row] + 1, lambda { |links|
+          callback.call(links) unless request.cancelled?
+        }) || ASYNC_PENDING
       end
 
       def call_provider_block(provider, line, request, callback)
@@ -232,11 +257,14 @@ module RTerm
 
       def normalize_provider_links(links, line)
         Array(links).filter_map do |link|
-          url = (link[:url] || link["url"]).to_s
+          range = link_value(link, :range)
+          next normalize_range_link(link, range) if range
+
+          url = link_value(link, :url).to_s
           next if url.empty?
 
-          start = link[:start] || link["start"] || link[:index] || link["index"]
-          length = link[:length] || link["length"] || url.length
+          start = link_value(link, :start) || link_value(link, :index)
+          length = link_value(link, :length) || url.length
           if start
             build_link(
               url: url,
@@ -254,8 +282,8 @@ module RTerm
       end
 
       def normalize_physical_link(link, url, length)
-        row = link[:row] || link["row"]
-        col = link[:col] || link["col"]
+        row = link_value(link, :row)
+        col = link_value(link, :col)
         return nil unless row && col
 
         length = length.to_i
@@ -264,7 +292,7 @@ module RTerm
           row: row.to_i,
           col: col.to_i,
           length: length,
-          text: link[:text] || link["text"] || url,
+          text: link_value(link, :text) || url,
           ranges: [{ row: row.to_i, col: col.to_i, length: length }],
           activate: link_callback(link, :activate),
           hover: link_callback(link, :hover),
@@ -291,7 +319,84 @@ module RTerm
       end
 
       def link_callback(link, name)
-        link[name] || link[name.to_s]
+        link_value(link, name)
+      end
+
+      def invoke_link_callback(callback, link)
+        return unless callback
+
+        arity = callback.respond_to?(:arity) ? callback.arity : 1
+        if arity.zero?
+          callback.call
+        elsif arity == 1 || arity.negative?
+          callback.call(link)
+        else
+          callback.call(nil, link[:text])
+        end
+      end
+
+      def normalize_range_link(link, range)
+        text = link_value(link, :text).to_s
+        url = link_value(link, :url).to_s
+        url = text if url.empty?
+        return nil if url.empty?
+
+        start_position = link_value(range, :start)
+        end_position = link_value(range, :end)
+        return nil unless start_position && end_position
+
+        start_col = link_value(start_position, :x).to_i - 1
+        start_row = link_value(start_position, :y).to_i - 1
+        end_col = link_value(end_position, :x).to_i - 1
+        end_row = link_value(end_position, :y).to_i - 1
+        ranges = physical_ranges(start_row, start_col, end_row, end_col)
+        return nil if ranges.empty?
+
+        {
+          url: url,
+          row: start_row,
+          col: start_col,
+          length: ranges.sum { |item| item[:length] },
+          text: text.empty? ? url : text,
+          ranges: ranges,
+          activate: link_callback(link, :activate),
+          hover: link_callback(link, :hover),
+          leave: link_callback(link, :leave)
+        }
+      end
+
+      def physical_ranges(start_row, start_col, end_row, end_col)
+        return [] if start_row.negative? || start_col.negative?
+        return [] if end_row < start_row
+        return [] if end_row == start_row && end_col < start_col
+
+        cols = @terminal.internal.cols
+        (start_row..end_row).filter_map do |row|
+          col = row == start_row ? start_col : 0
+          final_col = row == end_row ? end_col : cols - 1
+          length = final_col - col + 1
+          next if length <= 0
+
+          { row: row, col: col, length: length }
+        end
+      end
+
+      def link_value(object, name)
+        if object.respond_to?(:[])
+          value = indexed_value(object, name)
+          return value unless value.nil?
+
+          value = indexed_value(object, name.to_s)
+          return value unless value.nil?
+        end
+
+        object.public_send(name) if object.respond_to?(name)
+      end
+
+      def indexed_value(object, key)
+        object[key]
+      rescue StandardError
+        nil
       end
 
       def resolve_link(link_or_index, row: nil, col: nil)

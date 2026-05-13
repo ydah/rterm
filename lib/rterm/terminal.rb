@@ -2023,7 +2023,7 @@ module RTerm
     alias activeVersion active_version
     alias activeVersion= active_version=
 
-    def register(version, provider)
+    def register(version, provider = nil)
       @unicode_handler.register(version, provider)
     end
   end

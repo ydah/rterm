@@ -158,6 +158,18 @@ RSpec.describe RTerm::Common::UnicodeHandler do
       expect(handler.char_width(0x1F600)).to eq(1)
     end
 
+    it "registers providers with embedded versions and wcwidth methods" do
+      provider = Object.new
+      provider.define_singleton_method(:version) { "narrow-object" }
+      provider.define_singleton_method(:wcwidth) { |_codepoint| 1 }
+
+      handler.register(provider)
+      handler.active_version = "narrow-object"
+
+      expect(handler.versions).to include("narrow-object")
+      expect(handler.char_width(0x1F600)).to eq(1)
+    end
+
     it "raises for unknown unicode versions" do
       expect { handler.active_version = "missing" }.to raise_error(ArgumentError)
     end

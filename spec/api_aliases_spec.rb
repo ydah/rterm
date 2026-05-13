@@ -211,14 +211,14 @@ RSpec.describe "specification APIs" do
     terminal.key_event("x", text: "x")
     terminal.select(0, 0, 1)
     terminal.clearSelection
-    terminal.write("\e]0;compat-title\a")
+    terminal.write("\e]0;api-title\a")
     terminal.scrollLines(1)
 
     expect(data_event).to include("input", "x")
     expect(binary_event).to eq(["bin".b])
     expect(key_event).to contain_exactly(hash_including(key: "x", keyCode: "x".ord))
     expect(selection_events).to be > 0
-    expect(title_events).to eq(["compat-title"])
+    expect(title_events).to eq(["api-title"])
     expect(scroll_events).to be > 0
   end
 
@@ -816,9 +816,18 @@ RSpec.describe "specification APIs" do
 
   it "supports unicode namespace camelCase aliases" do
     terminal = RTerm::Terminal.new
+    provider = Object.new
+    provider.define_singleton_method(:version) { "narrow-object" }
+    provider.define_singleton_method(:wcwidth) { |_codepoint| 1 }
 
     terminal.unicode.activeVersion = "11"
 
     expect(terminal.unicode.activeVersion).to eq("11")
+
+    terminal.unicode.register(provider)
+    terminal.unicode.activeVersion = "narrow-object"
+
+    expect(terminal.unicode.activeVersion).to eq("narrow-object")
+    expect(terminal.internal.unicode_handler.char_width(0x1F600)).to eq(1)
   end
 end

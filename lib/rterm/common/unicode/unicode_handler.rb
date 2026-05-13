@@ -338,11 +338,18 @@ module RTerm
         @active_version = version
       end
 
-      # @param version [String]
-      # @param provider [#char_width, #call]
+      # @param version [String, #version]
+      # @param provider [#char_width, #wcwidth, #call]
       # @return [void]
-      def register(version, provider)
-        @providers[version] = provider
+      def register(version, provider = nil)
+        if provider.nil?
+          provider = version
+          version = provider_version(provider)
+        end
+
+        raise ArgumentError, "Unicode provider version is required" if version.nil? || version.to_s.empty?
+
+        @providers[version.to_s] = provider
       end
 
       # Returns the display width of a character (0, 1, or 2)
@@ -357,9 +364,10 @@ module RTerm
         end
 
         return provider.char_width(codepoint) if provider.respond_to?(:char_width)
+        return provider.wcwidth(codepoint) if provider.respond_to?(:wcwidth)
         return provider.call(codepoint) if provider.respond_to?(:call)
 
-        raise ArgumentError, "Unicode provider must respond to #char_width or #call"
+        raise ArgumentError, "Unicode provider must respond to #char_width, #wcwidth, or #call"
       end
 
       # @param codepoint [Integer]
@@ -393,6 +401,17 @@ module RTerm
       end
 
       private
+
+      def provider_version(provider)
+        return provider.version if provider.respond_to?(:version)
+
+        if provider.respond_to?(:[])
+          value = provider[:version] || provider["version"]
+          return value unless value.nil?
+        end
+
+        nil
+      end
 
       def grapheme_width(cluster)
         codepoints = cluster.codepoints

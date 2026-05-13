@@ -59,6 +59,34 @@ RSpec.describe RTerm::Addon::WebLinks do
     expect(addon.find_links).to be_empty
   end
 
+  it "supports callback-based object link providers" do
+    activated = nil
+    rows = []
+    provider = Object.new
+    provider.define_singleton_method(:provideLinks) do |row, callback|
+      rows << row
+      next callback.call([]) unless row == 1
+
+      callback.call([
+        {
+          text: "manual",
+          range: { start: { x: 5, y: row }, end: { x: 10, y: row } },
+          activate: ->(_event, text) { activated = text }
+        }
+      ])
+    end
+    addon.register_link_provider(provider)
+    terminal.write("see manual")
+
+    link = addon.find_links.first
+
+    expect(rows).to eq([1, 2, 3, 4])
+    expect(link).to include(url: "manual", row: 0, col: 4, length: 6, text: "manual")
+    expect(link[:ranges]).to eq([{ row: 0, col: 4, length: 6 }])
+    expect(addon.open_link(link)).to be true
+    expect(activated).to eq("manual")
+  end
+
   it "provides row-scoped links through provider-style API" do
     terminal.write("https://example.com\r\nhttps://example.org")
     yielded = nil
