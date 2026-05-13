@@ -232,4 +232,37 @@ RSpec.describe RTerm::Common::CellData do
       expect(cell).to have_content
     end
   end
+
+  describe "public getter aliases" do
+    it "returns character, code, width, colors, and attributes" do
+      cell = described_class.new
+      cell.char = "A"
+      cell.width = 2
+      cell.bold = true
+      cell.underline = true
+      cell.set_fg_color(:rgb, 0x112233)
+      cell.set_bg_color(:p256, 42)
+
+      expect(cell.getChars).to eq("A")
+      expect(cell.getCode).to eq(65)
+      expect(cell.getWidth).to eq(2)
+      expect(cell.getFgColor).to eq(0x112233)
+      expect(cell.getBgColor).to eq(42)
+      expect(cell.getFgColorMode).to eq(RTerm::Common::BufferConstants::ColorMode::RGB)
+      expect(cell.getBgColorMode).to eq(RTerm::Common::BufferConstants::ColorMode::P256)
+      expect(cell.isBold).to be true
+      expect(cell.isUnderline).to be true
+      expect(cell.isFgRGB).to be true
+      expect(cell.isBgPalette).to be true
+      expect(cell.isAttributeDefault).to be false
+    end
+
+    it "reports default color modes" do
+      cell = described_class.new
+
+      expect(cell.isFgDefault).to be true
+      expect(cell.isBgDefault).to be true
+      expect(cell.isAttributeDefault).to be true
+    end
+  end
 end

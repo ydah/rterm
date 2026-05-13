@@ -32,6 +32,9 @@ module RTerm
         code.chr(Encoding::UTF_8)
       end
 
+      alias get_chars char
+      alias getChars char
+
       # Sets the character for this cell.
       # @param value [String]
       def char=(value)
@@ -66,6 +69,9 @@ module RTerm
         @content & Content::CODEPOINT_MASK
       end
 
+      alias get_code code
+      alias getCode code
+
       # @return [Boolean] whether this cell has any content
       def has_content?
         (@content & Content::HAS_CONTENT_MASK) != 0
@@ -83,6 +89,9 @@ module RTerm
         (@content & Content::WIDTH_MASK) >> Content::WIDTH_SHIFT
       end
 
+      alias get_width width
+      alias getWidth width
+
       # @param value [Integer] display width
       def width=(value)
         @content = (@content & ~Content::WIDTH_MASK) | ((value & 0x3) << Content::WIDTH_SHIFT)
@@ -95,6 +104,8 @@ module RTerm
       end
 
       alias bold bold?
+      alias is_bold bold?
+      alias isBold bold?
 
       def bold=(value)
         @fg = value ? (@fg | FgFlags::BOLD) : (@fg & ~FgFlags::BOLD)
@@ -105,6 +116,8 @@ module RTerm
       end
 
       alias underline underline?
+      alias is_underline underline?
+      alias isUnderline underline?
 
       def underline=(value)
         @fg = value ? (@fg | FgFlags::UNDERLINE) : (@fg & ~FgFlags::UNDERLINE)
@@ -115,6 +128,8 @@ module RTerm
       end
 
       alias blink blink?
+      alias is_blink blink?
+      alias isBlink blink?
 
       def blink=(value)
         @fg = value ? (@fg | FgFlags::BLINK) : (@fg & ~FgFlags::BLINK)
@@ -125,6 +140,8 @@ module RTerm
       end
 
       alias inverse inverse?
+      alias is_inverse inverse?
+      alias isInverse inverse?
 
       def inverse=(value)
         @fg = value ? (@fg | FgFlags::INVERSE) : (@fg & ~FgFlags::INVERSE)
@@ -135,6 +152,8 @@ module RTerm
       end
 
       alias invisible invisible?
+      alias is_invisible invisible?
+      alias isInvisible invisible?
 
       def invisible=(value)
         @fg = value ? (@fg | FgFlags::INVISIBLE) : (@fg & ~FgFlags::INVISIBLE)
@@ -145,6 +164,8 @@ module RTerm
       end
 
       alias strikethrough strikethrough?
+      alias is_strikethrough strikethrough?
+      alias isStrikethrough strikethrough?
 
       def strikethrough=(value)
         @fg = value ? (@fg | FgFlags::STRIKETHROUGH) : (@fg & ~FgFlags::STRIKETHROUGH)
@@ -156,6 +177,8 @@ module RTerm
       end
 
       alias italic italic?
+      alias is_italic italic?
+      alias isItalic italic?
 
       def italic=(value)
         @bg = value ? (@bg | BgFlags::ITALIC) : (@bg & ~BgFlags::ITALIC)
@@ -167,6 +190,8 @@ module RTerm
       end
 
       alias dim dim?
+      alias is_dim dim?
+      alias isDim dim?
 
       def dim=(value)
         @bg = value ? (@bg | BgFlags::DIM) : (@bg & ~BgFlags::DIM)
@@ -178,6 +203,8 @@ module RTerm
       end
 
       alias overline overline?
+      alias is_overline overline?
+      alias isOverline overline?
 
       def overline=(value)
         @bg = value ? (@bg | BgFlags::OVERLINE) : (@bg & ~BgFlags::OVERLINE)
@@ -205,10 +232,41 @@ module RTerm
         end
       end
 
+      def fg_color_mode_value
+        @fg & ColorMode::MASK
+      end
+
+      alias get_fg_color_mode fg_color_mode_value
+      alias getFgColorMode fg_color_mode_value
+
       # @return [Integer] the color value (palette index or RGB)
       def fg_color
         @fg & Color::RGB_MASK
       end
+
+      alias get_fg_color fg_color
+      alias getFgColor fg_color
+
+      def fg_default?
+        fg_color_mode_value == ColorMode::DEFAULT
+      end
+
+      alias is_fg_default fg_default?
+      alias isFgDefault fg_default?
+
+      def fg_palette?
+        [ColorMode::P16, ColorMode::P256].include?(fg_color_mode_value)
+      end
+
+      alias is_fg_palette fg_palette?
+      alias isFgPalette fg_palette?
+
+      def fg_rgb?
+        fg_color_mode_value == ColorMode::RGB
+      end
+
+      alias is_fg_rgb fg_rgb?
+      alias isFgRGB fg_rgb?
 
       def fg_red
         (@fg & Color::RED_MASK) >> Color::RED_SHIFT
@@ -251,10 +309,48 @@ module RTerm
         end
       end
 
+      def bg_color_mode_value
+        @bg & ColorMode::MASK
+      end
+
+      alias get_bg_color_mode bg_color_mode_value
+      alias getBgColorMode bg_color_mode_value
+
       # @return [Integer] the color value
       def bg_color
         @bg & Color::RGB_MASK
       end
+
+      alias get_bg_color bg_color
+      alias getBgColor bg_color
+
+      def bg_default?
+        bg_color_mode_value == ColorMode::DEFAULT
+      end
+
+      alias is_bg_default bg_default?
+      alias isBgDefault bg_default?
+
+      def bg_palette?
+        [ColorMode::P16, ColorMode::P256].include?(bg_color_mode_value)
+      end
+
+      alias is_bg_palette bg_palette?
+      alias isBgPalette bg_palette?
+
+      def bg_rgb?
+        bg_color_mode_value == ColorMode::RGB
+      end
+
+      alias is_bg_rgb bg_rgb?
+      alias isBgRGB bg_rgb?
+
+      def attribute_default?
+        @fg.zero? && @bg.zero?
+      end
+
+      alias is_attribute_default attribute_default?
+      alias isAttributeDefault attribute_default?
 
       def bg_red
         (@bg & Color::RED_MASK) >> Color::RED_SHIFT

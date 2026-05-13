@@ -30,8 +30,13 @@ module RTerm
       # Returns the cell at the given column.
       # @param x [Integer] the column index
       # @return [CellData]
-      def get_cell(x)
-        @cells[x]
+      def get_cell(x, target = nil)
+        cell = @cells[x]
+        return nil unless cell
+        return cell unless target
+
+        target.copy_from(cell)
+        target
       end
 
       # Sets the cell at the given column.

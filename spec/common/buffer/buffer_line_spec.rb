@@ -28,6 +28,21 @@ RSpec.describe RTerm::Common::BufferLine do
       expect(result.char).to eq("A")
       expect(result).to be_bold
     end
+
+    it "can load a cell into an existing object" do
+      line = described_class.new(4)
+      source = RTerm::Common::CellData.new
+      source.char = "Z"
+      source.italic = true
+      target = RTerm::Common::CellData.new
+
+      line.set_cell(1, source)
+      result = line.getCell(1, target)
+
+      expect(result).to equal(target)
+      expect(target.char).to eq("Z")
+      expect(target).to be_italic
+    end
   end
 
   describe "#to_string" do
