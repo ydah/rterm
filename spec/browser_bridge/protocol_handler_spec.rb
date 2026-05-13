@@ -635,6 +635,15 @@ RSpec.describe RTerm::BrowserBridge::SessionManager do
       expect(manager.session_count).to eq(0)
     end
 
+    it 'handles close_terminal alias type' do
+      id = manager.create_session
+      response = manager.process_message(type: 'closeTerminal', session_id: id)
+      parsed = JSON.parse(response)
+
+      expect(parsed['type']).to eq('session_destroyed')
+      expect(manager.session_count).to eq(0)
+    end
+
     it 'returns camelCase clientId in session_attached payload' do
       id = manager.create_session(cols: 90, rows: 25)
 

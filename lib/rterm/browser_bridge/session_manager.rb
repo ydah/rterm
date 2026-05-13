@@ -302,6 +302,7 @@ module RTerm
         resume_terminal: ProtocolHandler::MessageType::RESUME_SESSION,
         destroy_terminal: ProtocolHandler::MessageType::DESTROY_SESSION,
         disconnect: ProtocolHandler::MessageType::DESTROY_SESSION,
+        close_terminal: ProtocolHandler::MessageType::DESTROY_SESSION,
         close: ProtocolHandler::MessageType::DESTROY_SESSION,
         terminate: ProtocolHandler::MessageType::DESTROY_SESSION,
         ping: ProtocolHandler::MessageType::PING,

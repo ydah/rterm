@@ -57,13 +57,22 @@ module RTerm
       # @raise [ProtocolError] if message is invalid
       def self.decode(data)
         parsed = JSON.parse(data)
-        raise ProtocolError, "Missing 'type' field" unless parsed['type']
+        raise ProtocolError, "Invalid JSON payload" unless parsed.is_a?(Hash)
 
-        {
-          type: parsed['type'],
-          session_id: parsed['session_id'],
-          payload: parsed['payload'] || {}
-        }
+        envelope = {}
+        parsed.each { |key, value| envelope[key.to_sym] = value }
+
+        raw_type = envelope[:type]
+        raw_session_id = envelope[:session_id] || envelope[:sessionId] || envelope[:id]
+        payload = envelope[:payload]
+        payload = {} unless payload.is_a?(Hash)
+
+        raise ProtocolError, "Missing 'type' field" unless raw_type
+
+        envelope[:type] = raw_type
+        envelope[:session_id] = raw_session_id
+        envelope[:payload] = payload
+        envelope
       rescue JSON::ParserError => e
         raise ProtocolError, "Invalid JSON: #{e.message}"
       end
