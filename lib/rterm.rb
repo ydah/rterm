@@ -54,6 +54,7 @@ require_relative "rterm/addons/clipboard/clipboard"
 require_relative "rterm/addons/progress/progress"
 require_relative "rterm/addons/image/image"
 require_relative "rterm/addons/unicode11/unicode11"
+require_relative "rterm/addons/unicode_graphemes/unicode_graphemes"
 require_relative "rterm/addons/web_links/web_links"
 
 module RTerm
