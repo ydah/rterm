@@ -12,6 +12,13 @@ RSpec.describe RTerm::Common::Buffer do
       expect(buffer.rows).to eq(24)
     end
 
+    it "supports xterm-like buffer attributes" do
+      expect(buffer.type).to eq("normal")
+      expect(buffer.viewportY).to eq(0)
+      expect(buffer.length).to eq(buffer.lines.length)
+      expect(buffer.getNullCell).to be_a(RTerm::Common::CellData)
+    end
+
     it "initializes with empty lines" do
       line = buffer.get_line(0)
       expect(line).to be_a(RTerm::Common::BufferLine)
@@ -201,6 +208,24 @@ RSpec.describe RTerm::Common::BufferSet do
   describe "#initialize" do
     it "starts with the normal buffer active" do
       expect(buffer_set.active).to equal(buffer_set.normal)
+    end
+
+    it "creates normal and alternate buffers with expected type labels" do
+      expect(buffer_set.normal.type).to eq("normal")
+      expect(buffer_set.alt.type).to eq("alternate")
+    end
+
+    it "emits buffer_change events when switching buffers" do
+      seen = []
+      buffer_set.on(:buffer_change) { |payload| seen << [payload[:active].type, payload[:old_active].type] }
+
+      buffer_set.activate_alt_buffer
+      buffer_set.activate_normal_buffer
+
+      expect(seen).to eq([
+        ["alternate", "normal"],
+        ["normal", "alternate"]
+      ])
     end
   end
 

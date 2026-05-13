@@ -2,20 +2,21 @@
 
 require_relative "buffer_line"
 require_relative "circular_list"
+require_relative "cell_data"
 
 module RTerm
   module Common
     # Terminal buffer that manages lines of cell data with scrollback support.
     # Uses CircularList for efficient line storage.
     class Buffer
-      attr_reader :cols, :rows, :lines, :scrollback, :tabs
+      attr_reader :cols, :rows, :lines, :scrollback, :tabs, :type
       attr_accessor :x, :y, :y_base, :y_disp, :scroll_top, :scroll_bottom
       attr_accessor :saved_x, :saved_y, :saved_cur_attr
 
       # @param cols [Integer] number of columns
       # @param rows [Integer] number of rows
       # @param scrollback [Integer] number of scrollback lines
-      def initialize(cols, rows, scrollback = 1000)
+      def initialize(cols, rows, scrollback = 1000, type = "normal")
         @cols = cols
         @rows = rows
         @scrollback = scrollback
@@ -30,6 +31,7 @@ module RTerm
         @saved_cur_attr = nil
         @tabs = {}
         @lines = CircularList.new(rows + scrollback)
+        @type = type.to_s
 
         setup_tab_stops
         fill_viewport
@@ -165,6 +167,18 @@ module RTerm
       alias getLine get_line
       alias getWrappedRangeForLine get_wrapped_range_for_line
       alias translateBufferLineToString translate_buffer_line_to_string
+      def lines_length
+        @lines.length
+      end
+
+      def get_null_cell
+        @null_cell ||= CellData.new
+      end
+
+      alias viewportY y_disp
+      alias viewportY= y_disp=
+      alias getNullCell get_null_cell
+      alias length lines_length
 
       private
 
