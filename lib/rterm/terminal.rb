@@ -16,17 +16,20 @@ module RTerm
     class Marker
       include Common::EventEmitter
 
-      def initialize(line)
+      def initialize(id, line)
+        @id = id
         @line = line
         @disposed = false
       end
 
+      attr_reader :id
       attr_accessor :line
 
       def dispose
         return if @disposed
 
         @disposed = true
+        @line = -1
         emit(:dispose, self)
         true
       end
@@ -117,6 +120,7 @@ module RTerm
       @custom_context_menu_event_handler = nil
       @focused = false
       @markers = []
+      @next_marker_id = 1
       @decorations = []
       @link_matchers = {}
       @next_link_matcher_id = 1
@@ -356,7 +360,7 @@ module RTerm
     end
 
     # CamelCase alias.
-    # @param line [Integer, nil] visible line, default is the cursor line
+    # @param line [Integer, nil] line offset from the cursor, default is the cursor line
     # @return [Marker, nil]
     def registerMarker(line = nil)
       register_marker(line)
@@ -364,7 +368,7 @@ module RTerm
 
     # Marker API.
     #
-    # @param line [Integer, nil] visible line, default is the cursor line
+    # @param line [Integer, nil] line offset from the cursor, default is the cursor line
     # @yield [Marker] called when marker is disposed
     # @return [Marker, nil]
     def add_marker(line = nil)
@@ -381,7 +385,7 @@ module RTerm
     end
 
     # CamelCase alias.
-    # @param line [Integer, nil] visible line, default is the cursor line
+    # @param line [Integer, nil] line offset from the cursor, default is the cursor line
     # @yield [Marker] called when marker is disposed
     # @return [Marker, nil]
     def addMarker(line = nil, &block)
@@ -466,20 +470,22 @@ module RTerm
     end
 
     # CamelCase alias.
-    # @param line [Integer, nil] visible line, default is the cursor line
+    # @param line [Integer, nil] line offset from the cursor, default is the cursor line
     # @return [Marker, nil]
     def register_marker(line = nil)
-      @last_scroll_position = @terminal.buffer_set.active.y_disp
-
       buffer = @terminal.buffer_set.active
-      visible_line = line.nil? ? buffer.y : line.to_i
-      visible_line = [[visible_line, 0].max, buffer.rows - 1].min
-      absolute_line = visible_line + buffer.y_disp
+      return nil if buffer.equal?(@terminal.buffer_set.alt)
+
+      @last_scroll_position = buffer.y_disp
+      offset = line.nil? ? 0 : line.to_i
+      absolute_line = buffer.y_base + buffer.y + offset
 
       max_line = buffer.lines.length - 1
       return nil if absolute_line.negative? || absolute_line > max_line
 
-      marker = Marker.new(absolute_line)
+      id = @next_marker_id
+      @next_marker_id += 1
+      marker = Marker.new(id, absolute_line)
       @markers << marker
 
       marker.on_dispose do
@@ -1461,21 +1467,7 @@ module RTerm
     def on_terminal_scroll(position)
       return if position.nil?
 
-      position = position.to_i
-      delta = @last_scroll_position - position
-      @last_scroll_position = position
-
-      return if @markers.empty? || delta.zero?
-
-      max_line = @terminal.buffer_set.active.lines.length - 1
-
-      @markers.each do |marker|
-        next if marker.disposed?
-
-        marker.line -= delta
-        marker.dispose if marker.line < 0 || marker.line > max_line
-      end
-      @markers.reject!(&:disposed?)
+      @last_scroll_position = position.to_i
     end
 
     private

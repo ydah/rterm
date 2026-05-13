@@ -509,11 +509,12 @@ RSpec.describe "specification APIs" do
 
     marker = terminal.registerMarker
     expect(marker).not_to be_nil
+    expect(marker.id).to be_a(Integer)
     expect(terminal.markers).to include(marker)
 
     start_line = marker.line
     terminal.scrollLines(-1)
-    expect(marker.line).to eq(start_line - 1)
+    expect(marker.line).to eq(start_line)
 
     terminal.scrollLines(1)
     expect(marker.line).to eq(start_line)
@@ -523,10 +524,23 @@ RSpec.describe "specification APIs" do
 
     terminal_marker.dispose
     expect(terminal.markers).not_to include(terminal_marker)
+    expect(terminal_marker.line).to eq(-1)
+    expect(terminal_marker.isDisposed).to be(true)
 
     terminal.clear
     expect(terminal.markers).to be_empty
     expect(terminal.getSelection).to eq("")
+  end
+
+  it "registers marker line offsets from the cursor" do
+    terminal = RTerm::Terminal.new(cols: 10, rows: 4)
+    terminal.write("abc")
+
+    marker = terminal.registerMarker(1)
+
+    expect(marker).not_to be_nil
+    expect(marker.line).to eq(1)
+    expect(terminal.registerMarker(-1)).to be_nil
   end
 
   it "hides markers while the alternate buffer is active" do
@@ -536,6 +550,7 @@ RSpec.describe "specification APIs" do
     terminal.internal.buffer_set.activate_alt_buffer
     expect(terminal.markers).to eq([])
     expect(terminal.getMarkers).to eq([])
+    expect(terminal.registerMarker).to be_nil
 
     terminal.internal.buffer_set.activate_normal_buffer
     expect(terminal.markers).to include(marker)
