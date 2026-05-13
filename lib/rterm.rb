@@ -50,6 +50,7 @@ require_relative "rterm/addons/search/search"
 require_relative "rterm/addons/serialize/serialize"
 require_relative "rterm/addons/fit/fit"
 require_relative "rterm/addons/clipboard/clipboard"
+require_relative "rterm/addons/progress/progress"
 require_relative "rterm/addons/web_links/web_links"
 
 module RTerm
