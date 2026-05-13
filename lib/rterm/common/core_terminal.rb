@@ -54,8 +54,7 @@ module RTerm
       def write(data)
         data = data.to_s.gsub(/\r?\n/, "\r\n") if @options.convert_eol
         @write_buffer.write(data)
-        emit_line_update(data)
-        emit(:write_parsed)
+        emit(:write_parsed, emit_line_update(data))
       end
 
       # Writes data followed by a newline.
@@ -79,6 +78,67 @@ module RTerm
         emit(:resize, { cols: cols, rows: rows })
       end
 
+      # Gets a terminal option value.
+      # @param name [Symbol, String]
+      # @return [Object]
+      def get_option(name)
+        key = normalize_option_name(name)
+        @options[key]
+      end
+
+      # Sets a terminal option value.
+      #
+      # Dynamic effects are applied for options that affect active behavior.
+      #
+      # @param name [Symbol, String]
+      # @param value [Object]
+      # @return [TerminalOptions]
+      def set_option(name, value)
+        key = normalize_option_name(name)
+        raise NotImplementedError, "Runtime scrollback changes are not supported" if key == :scrollback
+
+        old_value = @options[key]
+        return @options if old_value == value
+
+        next_options = @options.merge(key => value)
+        @options = next_options
+        @services.register(Services::OPTIONS_SERVICE, @options)
+
+        case key
+        when :cols, :rows
+          resize(@options.cols, @options.rows)
+        when :cursor_blink
+          @input_handler.send(:set_cursor_blink, @options.cursor_blink)
+        when :cursor_style
+          @input_handler.send(:set_cursor_style, @options.cursor_style)
+        when :theme
+          normalized_theme = if value.nil?
+            {}
+          elsif value.is_a?(RTerm::Theme)
+            value.to_h
+          else
+            RTerm::Theme.new(value).to_h
+          end
+          @options = @options.merge(theme: normalized_theme)
+          @services.register(Services::OPTIONS_SERVICE, @options)
+          @input_handler.send(:set_theme, @options.theme)
+        end
+
+        emit(
+          :option_change,
+          {
+            name: key,
+            old_value: old_value,
+            new_value: @options[key],
+            name_camel: camel_case_option_name(key),
+            oldValue: old_value,
+            newValue: @options[key]
+          }
+        )
+
+        @options
+      end
+
       # Resets the terminal to its initial state.
       def reset
         @parser.reset
@@ -91,6 +151,13 @@ module RTerm
       end
 
       private
+
+      def normalize_option_name(name)
+        normalized = name.to_s.tr("-", "_")
+        normalized = normalized.gsub(/([a-z\d])([A-Z])/, "\\1_\\2")
+        normalized = normalized.gsub(/([A-Z]+)([A-Z][a-z])/, "\\1_\\2")
+        normalized.downcase.to_sym
+      end
 
       def register_services
         @services.register(Services::BUFFER_SERVICE, @buffer_set)
@@ -109,7 +176,7 @@ module RTerm
         @input_handler.on(:title_change) { |title| emit(:title_change, title) }
         @input_handler.on(:icon_name_change) { |icon_name| emit(:icon_name_change, icon_name) }
         @input_handler.on(:window_operation) { |payload| emit(:window_operation, payload) }
-        @input_handler.on(:cursor_move) { emit(:cursor_move) }
+        @input_handler.on(:cursor_move) { |payload| emit(:cursor_move, payload) }
         @input_handler.on(:line_feed) { emit(:line_feed) }
         @input_handler.on(:data) { |data| emit(:data, data) }
         @input_handler.on(:hyperlink) do |payload|
@@ -128,7 +195,17 @@ module RTerm
           raw: raw.to_s
         }
         emit(:line_update, payload)
+        emit(:render, { start: 0, end: [@rows - 1, 0].max })
         emit(:screen_reader, payload) if @options.screen_reader_mode
+        payload
+      end
+
+      def camel_case_option_name(name)
+        tokens = name.to_s.split("_")
+        return name.to_s if tokens.length <= 1
+
+        first = tokens.shift
+        first + tokens.map { |token| token.capitalize }.join
       end
     end
   end

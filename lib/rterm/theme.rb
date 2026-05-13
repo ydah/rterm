@@ -35,10 +35,11 @@ module RTerm
 
     # @param overrides [Hash]
     def initialize(overrides = {})
-      unknown = overrides.keys.map(&:to_sym) - DEFAULTS.keys
+      normalized = symbolize_keys(overrides)
+      unknown = normalized.keys - DEFAULTS.keys
       raise ArgumentError, "Unknown theme color(s): #{unknown.join(', ')}" unless unknown.empty?
 
-      DEFAULTS.merge(symbolize_keys(overrides)).each do |key, value|
+      DEFAULTS.merge(normalized).each do |key, value|
         public_send("#{key}=", duplicate(value))
       end
     end
@@ -54,7 +55,23 @@ module RTerm
 
     def symbolize_keys(hash)
       hash.each_with_object({}) do |(key, value), result|
-        result[key.to_sym] = value
+        normalized = normalize_theme_key(key.to_sym).to_sym
+        result[normalized] = value
+      end
+    end
+
+    def normalize_theme_key(key)
+      normalized = key.to_s
+      normalized = normalized.tr("-", "_")
+      normalized = normalized.gsub(/([a-z\\d])([A-Z])/, "\\1_\\2")
+      normalized = normalized.gsub(/([A-Z]+)([A-Z][a-z])/, "\\1_\\2")
+      normalized = normalized.downcase
+
+      case normalized
+      when "cursor_accent_color"
+        "cursor_accent"
+      else
+        normalized
       end
     end
 

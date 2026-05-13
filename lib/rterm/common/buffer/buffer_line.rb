@@ -179,6 +179,29 @@ module RTerm
         0
       end
 
+      # xterm.js compatibility alias with positional argument order.
+      #
+      # @param trim_right [Boolean]
+      # @param start_col [Integer]
+      # @param end_col [Integer, nil]
+      # @return [String]
+      def translate_to_string(trim_right = true, start_col = 0, end_col = nil)
+        to_string(trim_right: trim_right, start_col: start_col, end_col: end_col)
+      end
+
+      # xterm.js compatibility aliases.
+      alias isWrapped is_wrapped
+      alias isWrapped= is_wrapped=
+      alias getCell get_cell
+      alias setCell set_cell
+      alias insertCells insert_cells
+      alias deleteCells delete_cells
+      alias replaceCells replace_cells
+      alias getTrimmedLength get_trimmed_length
+      alias toString to_string
+      alias getLength length
+      alias translateToString translate_to_string
+
       # Creates a deep copy of this line.
       # @return [BufferLine]
       def clone

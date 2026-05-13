@@ -251,19 +251,19 @@ module RTerm
         # CUU - Cursor Up
         @parser.set_csi_handler({ final: "A" }) do |params|
           n = [params[0], 1].max
-          buffer.y = [buffer.y - n, buffer.scroll_top].max
+          set_cursor_position(y: [buffer.y - n, buffer.scroll_top].max)
         end
 
         # CUD - Cursor Down
         @parser.set_csi_handler({ final: "B" }) do |params|
           n = [params[0], 1].max
-          buffer.y = [buffer.y + n, buffer.scroll_bottom].min
+          set_cursor_position(y: [buffer.y + n, buffer.scroll_bottom].min)
         end
 
         # CUF - Cursor Forward
         @parser.set_csi_handler({ final: "C" }) do |params|
           n = [params[0], 1].max
-          buffer.x = [buffer.x + n, right_margin].min
+          set_cursor_position(x: [buffer.x + n, right_margin].min)
         end
 
         # CUB - Cursor Backward
@@ -275,14 +275,14 @@ module RTerm
         # CNL - Cursor Next Line
         @parser.set_csi_handler({ final: "E" }) do |params|
           n = [params[0], 1].max
-          buffer.y = [buffer.y + n, buffer.rows - 1].min
+          set_cursor_position(y: [buffer.y + n, buffer.rows - 1].min)
           carriage_return
         end
 
         # CPL - Cursor Preceding Line
         @parser.set_csi_handler({ final: "F" }) do |params|
           n = [params[0], 1].max
-          buffer.y = [buffer.y - n, 0].max
+          set_cursor_position(y: [buffer.y - n, 0].max)
           carriage_return
         end
 
@@ -440,31 +440,31 @@ module RTerm
         # VPA - Vertical Position Absolute
         @parser.set_csi_handler({ final: "d" }) do |params|
           row = [params[0], 1].max
-          buffer.y = [[row - 1, 0].max, buffer.rows - 1].min
+          set_cursor_position(y: [[row - 1, 0].max, buffer.rows - 1].min)
         end
 
         # VPR - Vertical Position Relative
         @parser.set_csi_handler({ final: "e" }) do |params|
           row = [params[0], 1].max
-          buffer.y = [buffer.y + row, buffer.rows - 1].min
+          set_cursor_position(y: [buffer.y + row, buffer.rows - 1].min)
         end
 
         # CHA - Cursor Horizontal Absolute
         @parser.set_csi_handler({ final: "G" }) do |params|
           col = [params[0], 1].max
-          buffer.x = [[col - 1, left_margin].max, right_margin].min
+          set_cursor_position(x: [[col - 1, left_margin].max, right_margin].min)
         end
 
         # HPA - Horizontal Position Absolute
         @parser.set_csi_handler({ final: "`" }) do |params|
           col = [params[0], 1].max
-          buffer.x = [[col - 1, left_margin].max, right_margin].min
+          set_cursor_position(x: [[col - 1, left_margin].max, right_margin].min)
         end
 
         # HPR - Horizontal Position Relative
         @parser.set_csi_handler({ final: "a" }) do |params|
           col = [params[0], 1].max
-          buffer.x = [buffer.x + col, right_margin].min
+          set_cursor_position(x: [buffer.x + col, right_margin].min)
         end
 
         # REP - Repeat Previous Character
@@ -483,6 +483,16 @@ module RTerm
         # DECSCUSR - Set Cursor Style
         @parser.set_csi_handler({ intermediates: " ", final: "q" }) do |params|
           @cursor_style = cursor_style_from_param(params[0])
+        end
+
+        # SL - Scroll Left
+        @parser.set_csi_handler({ intermediates: " ", final: "@" }) do |params|
+          scroll_columns_left([params[0], 1].max)
+        end
+
+        # SR - Scroll Right
+        @parser.set_csi_handler({ intermediates: " ", final: "A" }) do |params|
+          scroll_columns_right([params[0], 1].max)
         end
 
         # DECSCA - Select Character Protection Attribute
@@ -526,6 +536,16 @@ module RTerm
         # DECRQM - Request ANSI Mode
         @parser.set_csi_handler({ intermediates: "$", final: "p" }) do |params|
           report_mode(params[0], mode_status(params[0]))
+        end
+
+        # DECIC - Insert Columns
+        @parser.set_csi_handler({ intermediates: "'", final: "}" }) do |params|
+          insert_columns([params[0], 1].max)
+        end
+
+        # DECDC - Delete Columns
+        @parser.set_csi_handler({ intermediates: "'", final: "~" }) do |params|
+          delete_columns([params[0], 1].max)
         end
 
         # DECSM - DEC Private Mode Set (CSI ? h)
@@ -592,8 +612,13 @@ module RTerm
           if buffer.y == buffer.scroll_top
             scroll_down(1)
           else
-            buffer.y = [buffer.y - 1, 0].max
+            set_cursor_position(y: [buffer.y - 1, 0].max)
           end
+        end
+
+        # DECALN - Alignment Display
+        @parser.set_esc_handler({ intermediates: "#", final: "8" }) do
+          fill_alignment_pattern
         end
 
         # RIS - Full Reset
@@ -689,15 +714,37 @@ module RTerm
 
       # ── Cursor movement helpers ──
 
+      def set_cursor_position(x: nil, y: nil)
+        current_x = buffer.x
+        current_y = buffer.y
+        next_x = x.nil? ? current_x : x.to_i
+        next_y = y.nil? ? current_y : y.to_i
+
+        return if current_x == next_x && current_y == next_y
+
+        buffer.x = next_x
+        buffer.y = next_y
+        emit_cursor_position
+      end
+
+      def emit_cursor_position
+        emit(:cursor_move, { x: buffer.x, y: buffer.y, col: buffer.x, row: buffer.y })
+      end
+
       def cursor_backward(n)
+        x = buffer.x
+        y = buffer.y
+
         n.times do
-          if buffer.x > left_margin
-            buffer.x -= 1
-          elsif @reverse_wraparound && buffer.y.positive? && !@left_right_margin_mode
-            buffer.y -= 1
-            buffer.x = reverse_wrap_column(buffer.get_line(buffer.y))
+          if x > left_margin
+            x -= 1
+          elsif @reverse_wraparound && y.positive? && !@left_right_margin_mode
+            y -= 1
+            x = reverse_wrap_column(buffer.get_line(y))
           end
         end
+
+        set_cursor_position(x: x, y: y)
       end
 
       def reverse_wrap_column(line)
@@ -711,16 +758,20 @@ module RTerm
 
       def tab(count = 1)
         buf = buffer
+        x = buf.x
         count.times do
-          buf.x = next_tab_stop(buf, buf.x)
+          x = next_tab_stop(buf, x)
         end
+        set_cursor_position(x: x, y: buf.y)
       end
 
       def backward_tab(count = 1)
         buf = buffer
+        x = buf.x
         count.times do
-          buf.x = previous_tab_stop(buf, buf.x)
+          x = previous_tab_stop(buf, x)
         end
+        set_cursor_position(x: x, y: buf.y)
       end
 
       def line_feed
@@ -728,13 +779,13 @@ module RTerm
         if buf.y == buf.scroll_bottom
           scroll_up(1)
         else
-          buf.y += 1
+          set_cursor_position(y: buf.y + 1)
         end
         emit(:line_feed)
       end
 
       def carriage_return
-        buffer.x = left_margin
+        set_cursor_position(x: left_margin, y: buffer.y)
       end
 
       # ── Scroll helpers ──
@@ -795,8 +846,10 @@ module RTerm
         bottom = @origin_mode ? buffer.scroll_bottom : buffer.rows - 1
         left = @origin_mode ? left_margin : 0
         right = @left_right_margin_mode ? right_margin : buffer.cols - 1
-        buffer.y = [[top + row - 1, top].max, bottom].min
-        buffer.x = [[left + col - 1, left].max, right].min
+        set_cursor_position(
+          x: [[left + col - 1, left].max, right].min,
+          y: [[top + row - 1, top].max, bottom].min
+        )
       end
 
       # ── Erase helpers ──
@@ -979,6 +1032,110 @@ module RTerm
             buf.lines[i] = src.clone if src
           end
           buf.lines[bottom] = BufferLine.new(buf.cols)
+        end
+      end
+
+      # ── Insert/Delete/Scroll columns ──
+
+      def insert_columns(count)
+        line = buffer.get_line(buffer.y)
+        return unless line
+
+        start = [[buffer.x, left_margin].max, right_margin + 1].min
+        return if start > right_margin
+
+        width = right_margin - start + 1
+        return if width <= 0
+
+        count = [count, 1].max
+        return if count <= 0
+
+        segment = copy_line_segment(line, start, right_margin)
+        segment.insert_cells(0, [count, width].min, erase_cell)
+        write_line_segment(line, start, segment)
+      end
+
+      def delete_columns(count)
+        line = buffer.get_line(buffer.y)
+        return unless line
+
+        start = [[buffer.x, left_margin].max, right_margin + 1].min
+        return if start > right_margin
+
+        width = right_margin - start + 1
+        return if width <= 0
+
+        count = [count, 1].max
+        return if count <= 0
+
+        segment = copy_line_segment(line, start, right_margin)
+        segment.delete_cells(0, [count, width].min, erase_cell)
+        write_line_segment(line, start, segment)
+      end
+
+      def scroll_columns_left(count)
+        line = buffer.get_line(buffer.y)
+        return unless line
+
+        start = [[buffer.x, left_margin].max, right_margin + 1].min
+        return if start > right_margin
+
+        width = right_margin - start + 1
+        return if width <= 0
+
+        count = [count, 1].max
+        return if count <= 0
+
+        segment = copy_line_segment(line, start, right_margin)
+        segment.delete_cells(0, [count, width].min, erase_cell)
+        write_line_segment(line, start, segment)
+      end
+
+      def scroll_columns_right(count)
+        line = buffer.get_line(buffer.y)
+        return unless line
+
+        start = [[buffer.x, left_margin].max, right_margin + 1].min
+        return if start > right_margin
+
+        width = right_margin - start + 1
+        return if width <= 0
+
+        count = [count, 1].max
+        return if count <= 0
+
+        segment = copy_line_segment(line, start, right_margin)
+        segment.insert_cells(0, [count, width].min, erase_cell)
+        write_line_segment(line, start, segment)
+      end
+
+      def fill_alignment_pattern
+        fill = CellData.new
+        fill.copy_from(@cur_attr)
+        fill.char = "E"
+        fill.width = 1
+
+        buffer.rows.times do |row|
+          line = buffer.get_line(row)
+          line&.replace_cells(0, buffer.cols, fill)
+        end
+      end
+
+      def copy_line_segment(line, start_col, end_col)
+        width = end_col - start_col + 1
+        segment = BufferLine.new(width)
+
+        (0...width).each do |offset|
+          cell = line.get_cell(start_col + offset)
+          segment.set_cell(offset, cell)
+        end
+
+        segment
+      end
+
+      def write_line_segment(line, start_col, segment)
+        (0...segment.length).each do |offset|
+          line.set_cell(start_col + offset, segment.get_cell(offset))
         end
       end
 
@@ -1409,6 +1566,30 @@ module RTerm
         emit(:clipboard, payload)
       end
 
+      def copy_to_clipboard(value, selection = "c")
+        text = value.to_s
+        encoded = encode_clipboard_data(text)
+
+        payload = {
+          selection: selection.to_s,
+          selections: clipboard_selections(selection),
+          data: encoded,
+          decoded: text,
+          multipart: multipart_clipboard_data?(encoded),
+          chunks: clipboard_data_chunks(encoded)
+        }
+
+        allowed, reason = clipboard_write_allowed?(payload)
+        payload[:allowed] = allowed
+        payload[:reason] = reason if reason
+
+        store_clipboard_data(payload[:selections], payload[:decoded]) if allowed
+        emit(:clipboard, payload)
+        payload
+      end
+
+      public :copy_to_clipboard
+
       def respond_to_clipboard_query(selection)
         selections = clipboard_selections(selection)
         value = clipboard_query_value(selections)
@@ -1684,8 +1865,7 @@ module RTerm
       end
 
       def reset_cursor_to_home
-        buffer.x = left_margin
-        buffer.y = @origin_mode ? buffer.scroll_top : 0
+        set_cursor_position(x: left_margin, y: @origin_mode ? buffer.scroll_top : 0)
       end
 
       def cursor_style_from_param(value)
@@ -1698,6 +1878,46 @@ module RTerm
         when 6 then :bar
         else :block
         end
+      end
+
+      # Replaces color theme assets used for resolving renderer-facing colors.
+      #
+      # @param theme [RTerm::Theme, Hash, nil]
+      # @return [void]
+      def set_theme(theme)
+        normalized_theme =
+          case theme
+          when RTerm::Theme
+            theme
+          when nil
+            RTerm::Theme.new
+          else
+            RTerm::Theme.new(theme)
+          end
+
+        @color_manager = ColorManager.new(normalized_theme)
+      end
+
+      # Updates cursor style and remembers it as the default for resets.
+      #
+      # @param style [Symbol, String]
+      # @return [Symbol]
+      def set_cursor_style(style)
+        normalized_style = style.to_sym
+        @cursor_style = normalized_style
+        @default_cursor_style = normalized_style
+        normalized_style
+      end
+
+      # Updates cursor blink state and remembers it as the default for resets.
+      #
+      # @param enabled [Boolean]
+      # @return [Boolean]
+      def set_cursor_blink(enabled)
+        value = enabled == true
+        @cursor_blink = value
+        @default_cursor_blink = value
+        value
       end
 
       def cursor_style_param

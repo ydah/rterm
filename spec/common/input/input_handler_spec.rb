@@ -464,6 +464,26 @@ RSpec.describe RTerm::Common::InputHandler do
       end
     end
 
+    describe "DECIC (' }) - insert columns" do
+      let(:cols) { 10 }
+
+      it "inserts columns at the cursor on the active line" do
+        parse("ABCDE")
+        buffer.x = 2
+        parse("\e[2'}")
+
+        expect(line_text(0)).to eq("AB  CDE")
+      end
+
+      it "does not modify text outside the screen columns" do
+        parse("ABCDE")
+        buffer.x = 1
+        parse("\e[99'}")
+
+        expect(buffer.get_line(0).to_string(trim_right: false)).to eq("A         ")
+      end
+    end
+
     describe "SU (S) - scroll up" do
       it "scrolls content up" do
         parse("Line 0\r\nLine 1\r\nLine 2")
@@ -480,6 +500,24 @@ RSpec.describe RTerm::Common::InputHandler do
         expect(line_text(0)).to eq("")
         expect(line_text(1)).to eq("Line 0")
         expect(line_text(2)).to eq("Line 1")
+      end
+    end
+
+    describe "SL/SR - scroll left and right" do
+      let(:cols) { 10 }
+
+      it "scrolls line content left from the cursor position" do
+        parse("abcdefghij")
+        parse("\e[3G\e[2 @")
+
+        expect(line_text(0)).to eq("abefghij")
+      end
+
+      it "scrolls line content right from the cursor position" do
+        parse("abcdefghij")
+        parse("\e[3G\e[2 A")
+
+        expect(line_text(0)).to eq("ab  cdefgh")
       end
     end
 
@@ -925,6 +963,18 @@ RSpec.describe RTerm::Common::InputHandler do
   end
 
   describe "ESC sequences" do
+    describe "ESC # 8 - alignment display (DECALN)" do
+      let(:cols) { 20 }
+
+      it "fills the active screen with E's" do
+        parse("hello")
+        parse("\e#8")
+
+        expect(line_text(0)).to eq("E" * cols)
+        expect(line_text(1)).to eq("E" * cols)
+      end
+    end
+
     describe "IND/NEL/HTS (D/E/H)" do
       it "ESC D acts like index" do
         buffer.y = 0

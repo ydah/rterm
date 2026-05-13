@@ -21,6 +21,14 @@ RSpec.describe RTerm::TerminalOptions do
     expect(options.cursor_blink).to be true
   end
 
+  it "accepts camelCase override keys" do
+    options = described_class.new(cursorStyle: :underline, scrollOnUserInput: false, convertEOL: true)
+
+    expect(options.cursor_style).to eq(:underline)
+    expect(options.scroll_on_user_input).to be false
+    expect(options.convert_eol).to be true
+  end
+
   it "duplicates nested option hashes" do
     options = described_class.new(window_options: { restore_win: true })
     copy = options.to_h

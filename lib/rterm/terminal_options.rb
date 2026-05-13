@@ -30,6 +30,7 @@ module RTerm
       mac_option_click_forces_selection: false,
       minimum_contrast_ratio: 1,
       convert_eol: false,
+      theme: nil,
       clipboard_enabled: true,
       clipboard_max_bytes: 1_048_576,
       clipboard_read_handler: nil,
@@ -52,10 +53,11 @@ module RTerm
     # @param overrides [Hash, TerminalOptions]
     def initialize(overrides = {})
       overrides = overrides.to_h if overrides.respond_to?(:to_h)
-      unknown = overrides.keys.map(&:to_sym) - DEFAULTS.keys
+      normalized_overrides = normalize_option_keys(overrides)
+      unknown = normalized_overrides.keys - DEFAULTS.keys
       raise ArgumentError, "Unknown terminal option(s): #{unknown.join(', ')}" unless unknown.empty?
 
-      @values = deep_dup(DEFAULTS).merge(deep_dup(symbolize_keys(overrides)))
+      @values = deep_dup(DEFAULTS).merge(deep_dup(normalized_overrides))
     end
 
     # @param key [Symbol, String]
@@ -78,9 +80,24 @@ module RTerm
     private
 
     def symbolize_keys(hash)
+      # Backward-compatible helper retained for clarity in nested copies.
       hash.each_with_object({}) do |(key, value), result|
         result[key.to_sym] = value
       end
+    end
+
+    def normalize_option_keys(hash)
+      hash.each_with_object({}) do |(key, value), result|
+        result[normalize_option_key(key)] = value
+      end
+    end
+
+    def normalize_option_key(key)
+      normalized = key.to_s
+      normalized = normalized.tr("-", "_")
+      normalized = normalized.gsub(/([a-z\d])([A-Z])/, "\\1_\\2")
+      normalized = normalized.gsub(/([A-Z]+)([A-Z][a-z])/, "\\1_\\2")
+      normalized.downcase.to_sym
     end
 
     def deep_dup(value)

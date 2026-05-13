@@ -34,19 +34,31 @@ module RTerm
       def scroll_lines(amount)
         max_disp = buffer.y_base
         buffer.y_disp = [[buffer.y_disp + amount, 0].max, max_disp].min
-        emit(:scroll)
+        emit(:scroll, buffer.y_disp)
       end
 
       # Scrolls to the top of the scrollback buffer.
       def scroll_to_top
         buffer.y_disp = 0
-        emit(:scroll)
+        emit(:scroll, buffer.y_disp)
       end
 
       # Scrolls to the bottom (most recent content).
       def scroll_to_bottom
         buffer.y_disp = buffer.y_base
-        emit(:scroll)
+        emit(:scroll, buffer.y_disp)
+      end
+
+      # Scrolls the viewport so the cursor stays at the same row in view.
+      # This mirrors xterm.js `scrollToCursor` behavior: the cursor line is
+      # made visible without moving its on-screen row.
+      def scroll_to_cursor
+        max_disp = [buffer.lines.length - buffer.rows, 0].max
+        cursor_absolute_row = buffer.y_base + buffer.y
+        target = cursor_absolute_row - buffer.y
+        target = [[target, 0].max, max_disp].min
+        buffer.y_disp = target
+        emit(:scroll, buffer.y_disp)
       end
 
       # Clears the terminal buffer.

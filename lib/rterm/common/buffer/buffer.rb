@@ -135,6 +135,37 @@ module RTerm
         first..last
       end
 
+      # Converts a line from the viewport into a string.
+      #
+      # @param y [Integer] the viewport row (0-based)
+      # @param trim_right [Boolean]
+      # @param start_col [Integer]
+      # @param end_col [Integer, nil]
+      # @return [String]
+      def translate_buffer_line_to_string(y, trim_right = true, start_col = 0, end_col = nil)
+        line = get_line(y)
+        return "" unless line
+
+        line.to_string(trim_right: trim_right, start_col: start_col, end_col: end_col)
+      end
+
+      # --- Compatibility aliases (xterm-like API names) ---
+      alias baseY y_base
+      alias yBase y_base
+      alias yDisp y_disp
+      alias baseY= y_base=
+      alias yBase= y_base=
+      alias yDisp= y_disp=
+      alias cursorX x
+      alias cursorY y
+      alias cursorX= x=
+      alias cursorY= y=
+      alias scrollTop scroll_top
+      alias scrollBottom scroll_bottom
+      alias getLine get_line
+      alias getWrappedRangeForLine get_wrapped_range_for_line
+      alias translateBufferLineToString translate_buffer_line_to_string
+
       private
 
       def new_blank_line
