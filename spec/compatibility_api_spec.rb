@@ -345,6 +345,39 @@ RSpec.describe "specification compatibility APIs" do
     expect(calls).to eq([nil, nil])
   end
 
+  it "accepts byte arrays for write and writeln data" do
+    terminal = RTerm::Terminal.new(cols: 12, rows: 2)
+
+    terminal.write([104, 105])
+    terminal.writeln([33])
+
+    expect(terminal.buffer.active.getLine(0).translateToString(true)).to start_with("hi!")
+  end
+
+  it "accepts xterm-style wasUserInput forms for input" do
+    terminal = RTerm::Terminal.new(cols: 4, rows: 2, scrollback: 20)
+    emitted = []
+
+    5.times { |i| terminal.writeln("line #{i}") }
+    terminal.scrollToTop
+    terminal.write("text")
+    terminal.select(0, 0, 1)
+    terminal.onData { |data| emitted << data }
+
+    terminal.input("a", false)
+    expect(terminal.getSelection).not_to eq("")
+    expect(terminal.internal.buffer_set.active.y_disp).to eq(0)
+
+    terminal.input("b", wasUserInput: false)
+    expect(terminal.getSelection).not_to eq("")
+    expect(terminal.internal.buffer_set.active.y_disp).to eq(0)
+
+    terminal.input("c", was_user_input: true)
+    expect(terminal.getSelection).to eq("")
+    expect(terminal.internal.buffer_set.active.y_disp).to eq(terminal.internal.buffer_set.active.y_base)
+    expect(emitted).to eq(%w[a b c])
+  end
+
   it "passes selection payload on onSelectionChange callbacks" do
     terminal = RTerm::Terminal.new
     payloads = []
@@ -494,6 +527,18 @@ RSpec.describe "specification compatibility APIs" do
     terminal.clear
     expect(terminal.markers).to be_empty
     expect(terminal.getSelection).to eq("")
+  end
+
+  it "hides markers while the alternate buffer is active" do
+    terminal = RTerm::Terminal.new(cols: 4, rows: 2)
+    marker = terminal.registerMarker
+
+    terminal.internal.buffer_set.activate_alt_buffer
+    expect(terminal.markers).to eq([])
+    expect(terminal.getMarkers).to eq([])
+
+    terminal.internal.buffer_set.activate_normal_buffer
+    expect(terminal.markers).to include(marker)
   end
 
   it "supports addMarker alias with disposal callback" do

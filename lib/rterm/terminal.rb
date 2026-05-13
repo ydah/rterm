@@ -167,7 +167,7 @@ module RTerm
     # @param callback [Proc, nil] optional callback (xterm.js compatibility)
     def write(data, callback = nil, &block)
       callback = block || callback
-      @terminal.write(data)
+      @terminal.write(normalize_write_data(data))
       callback.call(nil) if callback
     end
 
@@ -176,7 +176,7 @@ module RTerm
     # @param callback [Proc, nil] optional callback (xterm.js compatibility)
     def writeln(data, callback = nil, &block)
       callback = block || callback
-      @terminal.writeln(data)
+      @terminal.writeln(normalize_write_data(data))
       callback.call(nil) if callback
     end
 
@@ -218,7 +218,8 @@ module RTerm
 
     # Simulates user input (sends data event for PTY forwarding).
     # @param data [String] the input data
-    def input(data, was_user_input: true)
+    def input(data, was_user_input = true, **kwargs)
+      was_user_input = normalize_was_user_input(was_user_input, kwargs)
       return if options.disable_stdin
 
       if was_user_input
@@ -1418,6 +1419,8 @@ module RTerm
     # Returns current registered markers.
     # @return [Array<Marker>]
     def markers
+      return [] if @terminal.buffer_set.active.equal?(@terminal.buffer_set.alt)
+
       @markers.dup
     end
 
@@ -1481,6 +1484,25 @@ module RTerm
       @selection = selection
       @terminal.emit(:selection_change, selection_change_payload)
       @selection
+    end
+
+    def normalize_write_data(data)
+      return data if data.is_a?(String)
+      return data.pack("C*") if data.is_a?(Array) && data.all? { |byte| byte.is_a?(Integer) }
+
+      data.to_s
+    end
+
+    def normalize_was_user_input(was_user_input, kwargs)
+      if was_user_input.is_a?(Hash)
+        kwargs = was_user_input.merge(kwargs)
+        was_user_input = true
+      end
+
+      return kwargs[:was_user_input] if kwargs.key?(:was_user_input)
+      return kwargs[:wasUserInput] if kwargs.key?(:wasUserInput)
+
+      was_user_input
     end
 
     # xterm.js compatibility helper for normalizing matcher options.
