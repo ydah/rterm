@@ -26,6 +26,17 @@ RSpec.describe RTerm::BrowserBridge::ProtocolHandler do
       expect(result[:payload]['data']).to eq('hello')
     end
 
+    it 'supports camelCase sessionId and top-level message fields' do
+      json = '{"type":"resize","sessionId":"abc","cols":120,"rows":40}'
+      result = described_class.decode(json)
+
+      expect(result[:type]).to eq('resize')
+      expect(result[:session_id]).to eq('abc')
+      expect(result[:payload]).to eq({})
+      expect(result[:cols]).to eq(120)
+      expect(result[:rows]).to eq(40)
+    end
+
     it 'raises ProtocolError on missing type' do
       expect { described_class.decode('{"payload":{}}') }
         .to raise_error(RTerm::BrowserBridge::ProtocolError, /Missing 'type'/)
@@ -167,12 +178,34 @@ RSpec.describe RTerm::BrowserBridge::SessionManager do
       expect(terminal.options.clipboard_enabled).to be false
     end
 
+    it 'accepts camelCase terminal options in manager configuration' do
+      configured = described_class.new(terminal_options: { scrollback: 5, cursorStyle: :underline, scrollOnUserInput: false })
+      id = configured.create_session
+      terminal = configured.get_terminal(id)
+
+      expect(terminal.options.scrollback).to eq(5)
+      expect(terminal.options.cursor_style).to eq(:underline)
+      expect(terminal.options.scroll_on_user_input).to be false
+    end
+
     it 'allows per-session terminal options to override defaults' do
       configured = described_class.new(terminal_options: { scrollback: 5 })
       id = configured.create_session(scrollback: 10, cols: 100, rows: 30)
       terminal = configured.get_terminal(id)
 
       expect(terminal.options.scrollback).to eq(10)
+      expect(terminal.cols).to eq(100)
+      expect(terminal.rows).to eq(30)
+    end
+
+    it 'accepts camelCase per-session overrides for terminal options' do
+      configured = described_class.new(terminal_options: { scrollback: 5 })
+      id = configured.create_session(cols: 100, rows: 30, cursorStyle: :underline, scrollOnUserInput: false)
+      terminal = configured.get_terminal(id)
+
+      expect(terminal.options.scrollback).to eq(5)
+      expect(terminal.options.cursor_style).to eq(:underline)
+      expect(terminal.options.scroll_on_user_input).to be false
       expect(terminal.cols).to eq(100)
       expect(terminal.rows).to eq(30)
     end
@@ -341,6 +374,32 @@ RSpec.describe RTerm::BrowserBridge::SessionManager do
       expect(manager.session_count).to eq(1)
     end
 
+    it 'handles create_session payload with camelCase terminal options' do
+      msg = {
+        type: 'create_session',
+        session_id: nil,
+        payload: {
+          'cols' => 100,
+          'rows' => 30,
+          'terminalOptions' => { 'scrollback' => 77, 'cursorStyle' => :underline, 'scrollOnUserInput' => false }
+        }
+      }
+
+      response = manager.process_message(msg)
+      parsed = JSON.parse(response)
+      expect(parsed['type']).to eq('session_created')
+
+      id = parsed['session_id']
+      expect(manager.session_exists?(id)).to be true
+      terminal = manager.get_terminal(id)
+
+      expect(terminal.cols).to eq(100)
+      expect(terminal.rows).to eq(30)
+      expect(terminal.options.scrollback).to eq(77)
+      expect(terminal.options.cursor_style).to eq(:underline)
+      expect(terminal.options.scroll_on_user_input).to be false
+    end
+
     it 'handles ping' do
       msg = { type: 'ping', session_id: nil, payload: {} }
       response = manager.process_message(msg)
@@ -348,11 +407,150 @@ RSpec.describe RTerm::BrowserBridge::SessionManager do
       expect(parsed['type']).to eq('pong')
     end
 
+    it 'supports create_session with camelCase type key and top-level sessionId' do
+      msg = {
+        type: 'createSession',
+        sessionId: nil,
+        cols: 100,
+        rows: 40,
+        terminalOptions: { cursorStyle: :underline },
+        args: ['--noprofile'],
+        cwd: Dir.pwd
+      }
+
+      response = manager.process_message(msg)
+      parsed = JSON.parse(response)
+
+      expect(parsed['type']).to eq('session_created')
+      id = parsed['session_id']
+      terminal = manager.get_terminal(id)
+
+      expect(terminal.cols).to eq(100)
+      expect(terminal.rows).to eq(40)
+      expect(terminal.options.cursor_style).to eq(:underline)
+      expect(terminal.options.cursor_blink).to be false
+      expect(terminal.options.scroll_on_user_input).to be true
+    end
+
+    it 'supports create_session alias type names' do
+      response = manager.process_message({ type: 'create', session_id: nil, payload: { cols: 90, rows: 30 } })
+
+      parsed = JSON.parse(response)
+      expect(parsed['type']).to eq('session_created')
+
+      id = parsed['session_id']
+      expect(manager.get_terminal(id).cols).to eq(90)
+      expect(manager.get_terminal(id).rows).to eq(30)
+    end
+
+    it 'supports create_session alias terminal type names' do
+      response = manager.process_message(type: 'createTerminal', session_id: nil, cols: 86, rows: 28)
+
+      parsed = JSON.parse(response)
+      id = parsed['session_id']
+      expect(parsed['type']).to eq('session_created')
+      expect(manager.get_terminal(id).cols).to eq(86)
+      expect(manager.get_terminal(id).rows).to eq(28)
+    end
+
+    it 'supports create_session using options alias' do
+      response = manager.process_message(
+        type: 'create_session',
+        session_id: nil,
+        options: {
+          cols: 80,
+          rows: 24,
+          cursor_style: :underline,
+          scroll_on_user_input: false
+        }
+      )
+
+      parsed = JSON.parse(response)
+      id = parsed['session_id']
+      terminal = manager.get_terminal(id)
+
+      expect(parsed['type']).to eq('session_created')
+      expect(terminal.cols).to eq(80)
+      expect(terminal.rows).to eq(24)
+      expect(terminal.options.cursor_style).to eq(:underline)
+      expect(terminal.options.scroll_on_user_input).to be false
+    end
+
+    it 'supports top-level clientId for resume' do
+      id = manager.create_session
+      response = manager.process_message(
+        {
+          type: :resume_session,
+          session_id: id,
+          clientId: 'client-legacy'
+        }
+      )
+      parsed = JSON.parse(response)
+
+      expect(parsed['type']).to eq('session_resumed')
+      expect(parsed['payload']['client_id']).to eq('client-legacy')
+      expect(parsed['payload']['clientId']).to eq('client-legacy')
+      expect(manager.attached_clients(id)).to eq(['client-legacy'])
+    end
+
+    it 'supports top-level clientId for resumeTerminal' do
+      id = manager.create_session
+      response = manager.process_message(
+        {
+          type: :resumeTerminal,
+          session_id: id,
+          clientId: 'terminal-client'
+        }
+      )
+      parsed = JSON.parse(response)
+
+      expect(parsed['type']).to eq('session_resumed')
+      expect(parsed['payload']['client_id']).to eq('terminal-client')
+      expect(parsed['payload']['clientId']).to eq('terminal-client')
+      expect(manager.attached_clients(id)).to eq(['terminal-client'])
+    end
+
     it 'handles input' do
       id = manager.create_session
       msg = { type: 'input', session_id: id, payload: { 'data' => 'Hello' } }
       manager.process_message(msg)
       expect(manager.get_terminal(id).buffer.active.get_line(0).to_string).to eq("Hello")
+    end
+
+    it 'supports top-level input payload' do
+      id = manager.create_session
+      manager.process_message(type: 'input', session_id: id, data: 'Legacy')
+
+      expect(manager.get_terminal(id).buffer.active.get_line(0).to_string).to eq("Legacy")
+    end
+
+    it 'supports top-level input payload from decoded frames without payload wrapper' do
+      id = manager.create_session
+      decoded = RTerm::BrowserBridge::ProtocolHandler.decode("{\"type\":\"input\",\"sessionId\":\"#{id}\",\"data\":\"Decoded\"}")
+
+      manager.process_message(decoded)
+
+      expect(manager.get_terminal(id).buffer.active.get_line(0).to_string).to eq("Decoded")
+    end
+
+    it 'supports top-level resize payload from decoded frames without payload wrapper' do
+      id = manager.create_session
+      decoded = RTerm::BrowserBridge::ProtocolHandler.decode("{\"type\":\"resize\",\"sessionId\":\"#{id}\",\"cols\":101,\"rows\":22}")
+
+      manager.process_message(decoded)
+
+      terminal = manager.get_terminal(id)
+      expect(terminal.cols).to eq(101)
+      expect(terminal.rows).to eq(22)
+    end
+
+    it 'supports top-level resize payload' do
+      id = manager.create_session
+      manager.process_message(type: :resize, session_id: id, cols: 140, rows: 45)
+
+      terminal = manager.get_terminal(id)
+      expect(terminal.cols).to eq(140)
+      expect(terminal.rows).to eq(45)
     end
 
     it 'handles resize' do
@@ -371,6 +569,15 @@ RSpec.describe RTerm::BrowserBridge::SessionManager do
       expect(manager.session_count).to eq(0)
     end
 
+    it 'handles destroy_session alias (disconnect)' do
+      id = manager.create_session
+      response = manager.process_message({ type: 'disconnect', session_id: id })
+      parsed = JSON.parse(response)
+
+      expect(parsed['type']).to eq('session_destroyed')
+      expect(manager.session_count).to eq(0)
+    end
+
     it 'handles resume_session' do
       id = manager.create_session(cols: 90, rows: 25)
       msg = { type: 'resume_session', session_id: id, payload: { 'client_id' => 'client-1' } }
@@ -381,6 +588,7 @@ RSpec.describe RTerm::BrowserBridge::SessionManager do
       expect(parsed['type']).to eq('session_resumed')
       expect(parsed['session_id']).to eq(id)
       expect(parsed['payload']['client_id']).to eq('client-1')
+      expect(parsed['payload']['clientId']).to eq('client-1')
       expect(parsed['payload']['cols']).to eq(90)
     end
 
@@ -393,6 +601,49 @@ RSpec.describe RTerm::BrowserBridge::SessionManager do
 
       expect(parsed['type']).to eq('session_detached')
       expect(manager.attached_clients(id)).to eq([])
+    end
+
+    it 'handles attach_terminal alias type' do
+      id = manager.create_session(cols: 90, rows: 25)
+      response = manager.process_message(type: :attachTerminal, session_id: id, client_id: 'client-terminal')
+
+      parsed = JSON.parse(response)
+
+      expect(parsed['type']).to eq('session_attached')
+      expect(parsed['payload']['client_id']).to eq('client-terminal')
+      expect(parsed['payload']['clientId']).to eq('client-terminal')
+      expect(manager.attached_clients(id)).to eq(['client-terminal'])
+    end
+
+    it 'handles detach_terminal alias type' do
+      id = manager.create_session
+      manager.attach_session(id, client_id: "client-1")
+
+      response = manager.process_message(type: 'detachTerminal', session_id: id, payload: { client_id: 'client-1' })
+      parsed = JSON.parse(response)
+
+      expect(parsed['type']).to eq('session_detached')
+      expect(manager.attached_clients(id)).to eq([])
+    end
+
+    it 'handles destroy_terminal alias type' do
+      id = manager.create_session
+      response = manager.process_message(type: 'destroyTerminal', session_id: id)
+      parsed = JSON.parse(response)
+
+      expect(parsed['type']).to eq('session_destroyed')
+      expect(manager.session_count).to eq(0)
+    end
+
+    it 'returns camelCase clientId in session_attached payload' do
+      id = manager.create_session(cols: 90, rows: 25)
+
+      response = manager.process_message(type: :attach_session, session_id: id, payload: { client_id: 'client-legacy' })
+      parsed = JSON.parse(response)
+
+      expect(parsed['type']).to eq('session_attached')
+      expect(parsed['payload']['client_id']).to eq('client-legacy')
+      expect(parsed['payload']['clientId']).to eq('client-legacy')
     end
 
     it 'returns error for unknown message type' do
@@ -445,6 +696,17 @@ RSpec.describe RTerm::BrowserBridge::SessionManager do
     it 'accepts max_messages as a legacy rate limit alias' do
       now = Time.at(100)
       limited = described_class.new(rate_limit: { max_messages: 1, interval: 10 }, clock: -> { now })
+      msg = { type: 'ping', session_id: nil, payload: {} }
+
+      expect(JSON.parse(limited.process_message(msg))['type']).to eq('pong')
+      response = limited.process_message(msg)
+
+      expect(JSON.parse(response)['payload']['code']).to eq('rate_limited')
+    end
+
+    it 'accepts maxMessages as camelCase rate limit alias' do
+      now = Time.at(100)
+      limited = described_class.new(rate_limit: { maxMessages: 1, interval: 10 }, clock: -> { now })
       msg = { type: 'ping', session_id: nil, payload: {} }
 
       expect(JSON.parse(limited.process_message(msg))['type']).to eq('pong')

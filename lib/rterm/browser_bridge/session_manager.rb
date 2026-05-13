@@ -23,7 +23,7 @@ module RTerm
         @sessions = {}
         @max_sessions = max_sessions
         @default_command = default_command
-        @terminal_options = symbolize_keys(terminal_options || {})
+        @terminal_options = normalize_terminal_options(terminal_options || {})
         @session_timeout = session_timeout
         @idle_timeout = idle_timeout
         @authenticator = authenticator
@@ -52,7 +52,7 @@ module RTerm
         raise SessionError, "Maximum sessions (#{@max_sessions}) reached" if @sessions.size >= @max_sessions
 
         session_id = SecureRandom.uuid
-        session_options = @terminal_options.merge(symbolize_keys(options))
+        session_options = @terminal_options.merge(normalize_terminal_options(options || {}))
         terminal_options = terminal_options_from(session_options)
         cols = terminal_options.fetch(:cols, 80)
         rows = terminal_options.fetch(:rows, 24)
@@ -212,62 +212,57 @@ module RTerm
       def process_message(message)
         return ProtocolHandler.error("Unauthorized", code: "unauthorized") unless authorized?(message)
         return ProtocolHandler.error("Message too large", code: "message_too_large") if message_too_large?(message)
-        return ProtocolHandler.error("Rate limit exceeded", code: "rate_limited") if rate_limited?(message)
+        normalized = normalize_message(message)
+        return ProtocolHandler.error("Rate limit exceeded", code: "rate_limited") if rate_limited?(normalized)
 
         cleanup_expired
-        case message[:type]
+        session_id = normalized[:session_id]
+        payload = normalized[:payload]
+
+        case normalized[:type]
         when ProtocolHandler::MessageType::CREATE_SESSION
-          payload = message[:payload]
-          session_id = create_session(
-            command: payload['command'],
-            args: payload['args'] || [],
-            env: payload['env'] || {},
-            cwd: payload['cwd'],
-            cols: payload['cols'] || 80,
-            rows: payload['rows'] || 24
-          )
-          ProtocolHandler.session_created(session_id)
+          create_payload = payload.dup
+          create_payload = create_payload.merge(fetch_terminal_options_payload(payload))
+          create_payload[:args] ||= []
+          create_payload[:env] ||= {}
+          create_payload[:cols] = 80 if create_payload[:cols].nil?
+          create_payload[:rows] = 24 if create_payload[:rows].nil?
+          created = create_session(create_payload)
+          ProtocolHandler.session_created(created)
 
         when ProtocolHandler::MessageType::ATTACH_SESSION
-          payload = message[:payload]
-          snapshot = attach_session(message[:session_id], client_id: payload['client_id'])
-          ProtocolHandler.session_attached(message[:session_id], snapshot)
+          snapshot = attach_session(session_id, client_id: payload[:client_id])
+          ProtocolHandler.session_attached(session_id, session_snapshot_payload(snapshot))
 
         when ProtocolHandler::MessageType::DETACH_SESSION
-          payload = message[:payload]
-          detach_session(message[:session_id], client_id: payload['client_id'])
-          ProtocolHandler.session_detached(message[:session_id])
+          detach_session(session_id, client_id: payload[:client_id])
+          ProtocolHandler.session_detached(session_id)
 
         when ProtocolHandler::MessageType::RESUME_SESSION
-          payload = message[:payload]
-          snapshot = resume_session(message[:session_id], client_id: payload['client_id'])
-          ProtocolHandler.session_resumed(message[:session_id], snapshot)
+          snapshot = resume_session(session_id, client_id: payload[:client_id])
+          ProtocolHandler.session_resumed(session_id, session_snapshot_payload(snapshot))
 
         when ProtocolHandler::MessageType::DESTROY_SESSION
-          destroy_session(message[:session_id])
-          ProtocolHandler.session_destroyed(message[:session_id])
+          destroy_session(session_id)
+          ProtocolHandler.session_destroyed(session_id)
 
         when ProtocolHandler::MessageType::INPUT
-          write(message[:session_id], message[:payload]['data'])
+          write(session_id, payload[:data])
           nil
 
         when ProtocolHandler::MessageType::RESIZE
-          resize(
-            message[:session_id],
-            message[:payload]['cols'],
-            message[:payload]['rows']
-          )
+          resize(session_id, payload[:cols], payload[:rows])
           nil
 
         when ProtocolHandler::MessageType::PING
-          heartbeat(message[:session_id]) if message[:session_id]
+          heartbeat(session_id) if session_id
           ProtocolHandler.pong
 
         else
-          ProtocolHandler.error("Unknown message type: #{message[:type]}", code: "unknown_message_type")
+          ProtocolHandler.error("Unknown message type: #{normalized[:type]}", code: "unknown_message_type")
         end
       rescue SessionError => e
-        ProtocolHandler.error(e.message, session_id: message[:session_id], code: "session_error")
+        ProtocolHandler.error(e.message, session_id: session_id, code: "session_error")
       end
 
       # @return [Integer] current number of active sessions
@@ -294,6 +289,39 @@ module RTerm
       end
 
       private
+
+      MESSAGE_TYPE_ALIASES = {
+        create: ProtocolHandler::MessageType::CREATE_SESSION,
+        attach: ProtocolHandler::MessageType::ATTACH_SESSION,
+        detach: ProtocolHandler::MessageType::DETACH_SESSION,
+        resume: ProtocolHandler::MessageType::RESUME_SESSION,
+        destroy: ProtocolHandler::MessageType::DESTROY_SESSION,
+        create_terminal: ProtocolHandler::MessageType::CREATE_SESSION,
+        attach_terminal: ProtocolHandler::MessageType::ATTACH_SESSION,
+        detach_terminal: ProtocolHandler::MessageType::DETACH_SESSION,
+        resume_terminal: ProtocolHandler::MessageType::RESUME_SESSION,
+        destroy_terminal: ProtocolHandler::MessageType::DESTROY_SESSION,
+        disconnect: ProtocolHandler::MessageType::DESTROY_SESSION,
+        close: ProtocolHandler::MessageType::DESTROY_SESSION,
+        terminate: ProtocolHandler::MessageType::DESTROY_SESSION,
+        ping: ProtocolHandler::MessageType::PING,
+        input: ProtocolHandler::MessageType::INPUT,
+        resize: ProtocolHandler::MessageType::RESIZE
+      }.freeze
+
+      # Keys accepted from older or alternate client payload styles.
+      LEGACY_MESSAGE_FIELDS = %i[
+        data
+        cols
+        rows
+        args
+        env
+        cwd
+        command
+        client_id
+        terminal_options
+        options
+      ].freeze
 
       def get_session(session_id)
         session = @sessions[session_id]
@@ -328,7 +356,7 @@ module RTerm
       def normalize_rate_limit(rate_limit)
         return nil unless rate_limit
 
-        config = symbolize_keys(rate_limit)
+        config = normalize_terminal_options(rate_limit)
         limit = config[:limit] || config[:max_messages]
         interval = config[:interval]
 
@@ -352,16 +380,66 @@ module RTerm
         raise ArgumentError, "rate_limit requires numeric :limit and :interval"
       end
 
-      def symbolize_keys(hash)
-        source = hash.respond_to?(:to_h) ? hash.to_h : hash
-        source.each_with_object({}) do |(key, value), result|
-          result[key.to_sym] = value
+      def normalize_message(message)
+        envelope = normalize_terminal_options(message.respond_to?(:to_h) ? message.to_h : {})
+        payload = normalize_payload(envelope[:payload] || {})
+        LEGACY_MESSAGE_FIELDS.each do |field|
+          value = envelope[field]
+          payload[field] = value unless value.nil? || payload.key?(field)
         end
+
+        {
+          type: normalize_message_type(envelope[:type]),
+          session_id: envelope[:session_id] || envelope[:id],
+          payload: payload
+        }
+      end
+
+      def normalize_message_type(raw_type)
+        return nil if raw_type.nil?
+
+        normalized_type = normalize_terminal_option_key(raw_type)
+        normalized_type = normalized_type.to_s
+        return normalized_type if ProtocolHandler::MessageType.constants.any? do |name|
+          ProtocolHandler::MessageType.const_get(name) == normalized_type
+        end
+
+        MESSAGE_TYPE_ALIASES.fetch(normalized_type.to_sym, normalized_type)
+      end
+
+      def normalize_payload(payload)
+        normalize_terminal_options(payload)
+      end
+
+      def fetch_terminal_options_payload(payload)
+        terminal_options = payload[:terminal_options]
+        options = payload[:options]
+
+        terminal_options = terminal_options.is_a?(Hash) ? normalize_terminal_options(terminal_options) : {}
+        options = options.is_a?(Hash) ? normalize_terminal_options(options) : {}
+        terminal_options.merge(options)
+      end
+
+      def normalize_terminal_options(hash)
+        source = hash.respond_to?(:to_h) ? hash.to_h : {}
+        return {} unless source.is_a?(Hash)
+        source.each_with_object({}) do |(key, value), result|
+          result[normalize_terminal_option_key(key)] = value
+        end
+      end
+
+      def normalize_terminal_option_key(key)
+        normalized = key.to_s
+        normalized = normalized.tr("-", "_")
+        normalized = normalized.gsub(/([a-z\d])([A-Z])/, "\\1_\\2")
+        normalized = normalized.gsub(/([A-Z]+)([A-Z][a-z])/, "\\1_\\2")
+        normalized.downcase.to_sym
       end
 
       def terminal_options_from(session_options)
         allowed = RTerm::TerminalOptions::DEFAULTS.keys
-        session_options.select { |key, _value| allowed.include?(key.to_sym) }
+        terminal_options = normalize_terminal_options(session_options)
+        terminal_options.select { |key, _value| allowed.include?(key) }
       end
 
       def attach_client(session, client_id)
@@ -393,6 +471,19 @@ module RTerm
           'modes' => terminal.modes,
           'images' => terminal.images
         }
+      end
+
+      def session_snapshot_payload(snapshot)
+        snapshot.each_with_object(snapshot.dup) do |(key, _value), payload|
+          camel_key = snake_to_camel(key)
+          payload[camel_key] = snapshot[key] unless payload.key?(camel_key)
+        end
+      end
+
+      def snake_to_camel(key)
+        normalized = key.to_s
+        parts = normalized.split("_")
+        parts.first + parts[1..].map { |part| part.capitalize }.join
       end
 
       def message_too_large?(message)
