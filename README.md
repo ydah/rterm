@@ -11,7 +11,7 @@ helpers; rendering stays in the host application.
 - OSC/DCS support including OSC 8 hyperlinks, OSC 52 clipboard policy hooks, Sixel, and iTerm2 image metadata
 - PTY integration for interactive shell processes, including cwd/env, stdin close, pause/resume, process groups, and exit lifecycle
 - Browser bridge protocol for WebSocket-based terminal apps with session resume, attach policies, rate limits, heartbeat timeouts, origin checks, and binary negotiation
-- Addons: Search, Serialize, Fit, WebLinks
+- Addons: Search, Serialize, Fit, Clipboard, Progress, WebLinks
 
 ## Requirements
 
@@ -84,6 +84,26 @@ term.write("open https://example.com")
 link = links.find_links.first
 links.on_link { |item| puts "open #{item[:url]}" }
 links.open_link(link)
+```
+
+Clipboard:
+
+```ruby
+clipboard = RTerm::Addon::Clipboard.new
+term.load_addon(clipboard)
+
+clipboard.write_text("ready")
+clipboard.paste
+```
+
+Progress:
+
+```ruby
+progress = RTerm::Addon::Progress.new
+term.load_addon(progress)
+
+progress.on_change { |state| puts "#{state[:name]} #{state[:value]}%" }
+term.write("\e]9;4;1;50\a")
 ```
 
 ## Terminal APIs
