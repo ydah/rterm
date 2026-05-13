@@ -644,6 +644,33 @@ RSpec.describe RTerm::BrowserBridge::SessionManager do
       expect(manager.session_count).to eq(0)
     end
 
+    it 'handles close_session alias type' do
+      id = manager.create_session
+      response = manager.process_message(type: 'close_session', session_id: id)
+      parsed = JSON.parse(response)
+
+      expect(parsed['type']).to eq('session_destroyed')
+      expect(manager.session_count).to eq(0)
+    end
+
+    it 'handles disconnect_session alias type' do
+      id = manager.create_session
+      response = manager.process_message(type: 'disconnectSession', session_id: id)
+      parsed = JSON.parse(response)
+
+      expect(parsed['type']).to eq('session_destroyed')
+      expect(manager.session_count).to eq(0)
+    end
+
+    it 'handles terminate_session alias type' do
+      id = manager.create_session
+      response = manager.process_message(type: 'terminateSession', session_id: id)
+      parsed = JSON.parse(response)
+
+      expect(parsed['type']).to eq('session_destroyed')
+      expect(manager.session_count).to eq(0)
+    end
+
     it 'returns camelCase clientId in session_attached payload' do
       id = manager.create_session(cols: 90, rows: 25)
 
@@ -667,6 +694,14 @@ RSpec.describe RTerm::BrowserBridge::SessionManager do
       response = manager.process_message(msg)
       parsed = JSON.parse(response)
       expect(parsed['type']).to eq('error')
+    end
+
+    it 'handles negotiate messages directly' do
+      response = manager.process_message(type: :negotiate, payload: { binary: true })
+      parsed = JSON.parse(response)
+
+      expect(parsed['type']).to eq('negotiated')
+      expect(parsed['payload']['binary']).to be true
     end
 
     it 'uses auth hooks to reject messages' do

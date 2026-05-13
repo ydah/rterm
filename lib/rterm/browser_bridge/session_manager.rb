@@ -258,6 +258,9 @@ module RTerm
           heartbeat(session_id) if session_id
           ProtocolHandler.pong
 
+        when ProtocolHandler::MessageType::NEGOTIATE
+          ProtocolHandler.negotiated(binary: payload[:binary] == true)
+
         else
           ProtocolHandler.error("Unknown message type: #{normalized[:type]}", code: "unknown_message_type")
         end
@@ -301,13 +304,19 @@ module RTerm
         detach_terminal: ProtocolHandler::MessageType::DETACH_SESSION,
         resume_terminal: ProtocolHandler::MessageType::RESUME_SESSION,
         destroy_terminal: ProtocolHandler::MessageType::DESTROY_SESSION,
-        disconnect: ProtocolHandler::MessageType::DESTROY_SESSION,
+        close_session: ProtocolHandler::MessageType::DESTROY_SESSION,
+        disconnect_session: ProtocolHandler::MessageType::DESTROY_SESSION,
+        terminate_session: ProtocolHandler::MessageType::DESTROY_SESSION,
         close_terminal: ProtocolHandler::MessageType::DESTROY_SESSION,
+        disconnect_terminal: ProtocolHandler::MessageType::DESTROY_SESSION,
+        terminate_terminal: ProtocolHandler::MessageType::DESTROY_SESSION,
+        disconnect: ProtocolHandler::MessageType::DESTROY_SESSION,
         close: ProtocolHandler::MessageType::DESTROY_SESSION,
         terminate: ProtocolHandler::MessageType::DESTROY_SESSION,
         ping: ProtocolHandler::MessageType::PING,
         input: ProtocolHandler::MessageType::INPUT,
-        resize: ProtocolHandler::MessageType::RESIZE
+        resize: ProtocolHandler::MessageType::RESIZE,
+        negotiate: ProtocolHandler::MessageType::NEGOTIATE
       }.freeze
 
       # Keys accepted from older or alternate client payload styles.
