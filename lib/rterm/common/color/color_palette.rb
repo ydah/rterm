@@ -4,7 +4,7 @@ require_relative "../../theme"
 
 module RTerm
   module Common
-    # xterm-compatible 256 color palette.
+    # 256 color palette.
     class ColorPalette
       ANSI_KEYS = %i[
         black red green yellow blue magenta cyan white

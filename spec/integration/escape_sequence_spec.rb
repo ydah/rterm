@@ -76,7 +76,7 @@ RSpec.describe "Escape Sequence Integration" do
       expect(term.buffer.active.get_line(0).get_cell(19).char).to eq("x")
     end
 
-    it "HPA, HPR and VPR move cursor using xterm aliases" do
+    it "HPA, HPR and VPR move cursor using terminal aliases" do
       term.write("\e[12`x")
       expect(term.buffer.active.get_line(0).get_cell(11).char).to eq("x")
 

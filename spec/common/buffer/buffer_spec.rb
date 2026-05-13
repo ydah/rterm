@@ -12,7 +12,7 @@ RSpec.describe RTerm::Common::Buffer do
       expect(buffer.rows).to eq(24)
     end
 
-    it "supports xterm-like buffer attributes" do
+    it "supports buffer metadata attributes" do
       expect(buffer.type).to eq("normal")
       expect(buffer.viewportY).to eq(0)
       expect(buffer.length).to eq(buffer.lines.length)

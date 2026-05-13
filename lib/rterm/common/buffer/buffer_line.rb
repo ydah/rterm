@@ -179,7 +179,7 @@ module RTerm
         0
       end
 
-      # xterm.js compatibility alias with positional argument order.
+      # CamelCase alias with positional argument order.
       #
       # @param trim_right [Boolean]
       # @param start_col [Integer]
@@ -189,7 +189,7 @@ module RTerm
         to_string(trim_right: trim_right, start_col: start_col, end_col: end_col)
       end
 
-      # xterm.js compatibility aliases.
+      # CamelCase aliases.
       alias isWrapped is_wrapped
       alias isWrapped= is_wrapped=
       alias getCell get_cell

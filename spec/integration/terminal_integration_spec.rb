@@ -69,7 +69,7 @@ RSpec.describe RTerm::Terminal do
   end
 
   describe "#modes" do
-    it "reports current xterm-style terminal modes" do
+    it "reports current terminal modes" do
       terminal.write("\e[4h")
       terminal.write("\e[?1h")
       terminal.write("\e[?6h")

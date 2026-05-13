@@ -3,7 +3,7 @@
 module RTerm
   module Common
     # Constants for cell content, attribute, and color encoding.
-    # These mirror the bit-packing layout from xterm.js's Constants.ts.
+    # These mirror the bit-packing layout from the packed buffer attribute format.
     module BufferConstants
       # Content word bit layout
       module Content

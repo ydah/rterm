@@ -6,7 +6,7 @@ helpers; rendering stays in the host application.
 
 ## Overview
 
-- ANSI/VT escape sequence parsing and xterm-style buffer management
+- ANSI/VT escape sequence parsing and terminal buffer management
 - Unicode-aware cell handling, wrapped-line reflow, scrollback, selection, and mouse reporting
 - OSC/DCS support including OSC 8 hyperlinks, OSC 52 clipboard policy hooks, Sixel, and iTerm2 image metadata
 - PTY integration for interactive shell processes, including cwd/env, stdin close, pause/resume, process groups, and exit lifecycle

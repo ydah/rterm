@@ -151,7 +151,7 @@ module RTerm
         line.to_string(trim_right: trim_right, start_col: start_col, end_col: end_col)
       end
 
-      # --- Compatibility aliases (xterm-like API names) ---
+      # --- Compatibility aliases (camelCase API names) ---
       alias baseY y_base
       alias yBase y_base
       alias yDisp y_disp

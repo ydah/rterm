@@ -6,7 +6,7 @@ require_relative "params"
 module RTerm
   module Common
     # ANSI/VT escape sequence parser based on a state machine.
-    # Faithfully implements the xterm.js VT500 transition table.
+    # Implements the VT500 transition table.
     class EscapeSequenceParser
       include ParserState
       include ParserAction

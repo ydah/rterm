@@ -99,7 +99,7 @@ RSpec.describe "specification compatibility APIs" do
     expect(bell).to be true
   end
 
-  it "supports xterm.js-style parser handler camelCase aliases" do
+  it "supports parser handler camelCase aliases" do
     terminal = RTerm::Terminal.new
     csi_called = false
 
@@ -114,7 +114,7 @@ RSpec.describe "specification compatibility APIs" do
     expect(csi_called).to be true
   end
 
-  it "provides xterm-style selection APIs" do
+  it "provides selection APIs" do
     terminal = RTerm::Terminal.new
     terminal.write("hello world")
 
@@ -129,7 +129,7 @@ RSpec.describe "specification compatibility APIs" do
     expect(terminal.hasSelection).to be false
   end
 
-  it "provides xterm-style scroll and viewport APIs" do
+  it "provides scroll and viewport APIs" do
     terminal = RTerm::Terminal.new(cols: 4, rows: 2, scrollback: 20)
     10.times { |i| terminal.writeln("line #{i}") }
 
@@ -190,7 +190,7 @@ RSpec.describe "specification compatibility APIs" do
     )
   end
 
-  it "emits xterm-compatible compatibility events" do
+  it "emits terminal compatibility events" do
     terminal = RTerm::Terminal.new
     data_event = []
     binary_event = []
@@ -222,7 +222,7 @@ RSpec.describe "specification compatibility APIs" do
     expect(scroll_events).to be > 0
   end
 
-  it "supports additional xterm compatibility events" do
+  it "supports additional terminal compatibility events" do
     terminal = RTerm::Terminal.new
     focus_events = 0
     blur_events = 0
@@ -354,7 +354,7 @@ RSpec.describe "specification compatibility APIs" do
     expect(terminal.buffer.active.getLine(0).translateToString(true)).to start_with("hi!")
   end
 
-  it "accepts xterm-style wasUserInput forms for input" do
+  it "accepts wasUserInput forms for input" do
     terminal = RTerm::Terminal.new(cols: 4, rows: 2, scrollback: 20)
     emitted = []
 
@@ -432,7 +432,7 @@ RSpec.describe "specification compatibility APIs" do
     expect(saw).to include(["hello", 0])
   end
 
-  it "supports xterm style selection aliases" do
+  it "supports selection aliases" do
     terminal = RTerm::Terminal.new
     terminal.write("open https://example.com")
 
@@ -447,7 +447,7 @@ RSpec.describe "specification compatibility APIs" do
     expect(terminal.getSelection).to eq("https://example.com")
   end
 
-  it "supports selection aliases used by xterm APIs" do
+  it "supports additional selection aliases" do
     terminal = RTerm::Terminal.new(cols: 6, rows: 5)
     terminal.writeln("first")
     terminal.writeln("second")

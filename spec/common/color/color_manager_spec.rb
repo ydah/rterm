@@ -8,7 +8,7 @@ RSpec.describe RTerm::Common::ColorPalette do
     expect(palette[15]).to eq("#ffffff")
   end
 
-  it "builds xterm 256-color entries" do
+  it "builds 256-color palette entries" do
     palette = described_class.new
 
     expect(palette[16]).to eq("#000000")

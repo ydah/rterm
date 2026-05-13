@@ -5,7 +5,7 @@ require_relative "session_manager"
 
 module RTerm
   module BrowserBridge
-    # WebSocket entry point for browser-based xterm.js clients.
+    # WebSocket entry point for browser-based terminal clients.
     class WebSocketServer
       Config = Struct.new(
         :default_command,

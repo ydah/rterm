@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 RSpec.describe RTerm::TerminalOptions do
-  it "provides xterm-compatible defaults" do
+  it "provides terminal-compatible defaults" do
     options = described_class.new
 
     expect(options.cols).to eq(80)
@@ -44,7 +44,7 @@ RSpec.describe RTerm::TerminalOptions do
 end
 
 RSpec.describe RTerm::Theme do
-  it "has xterm-style default colors" do
+  it "has default terminal colors" do
     theme = described_class.new
 
     expect(theme.foreground).to eq("#ffffff")

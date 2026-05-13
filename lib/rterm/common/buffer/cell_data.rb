@@ -6,7 +6,7 @@ module RTerm
   module Common
     # Represents a single terminal cell with character, width, and text attributes.
     # Attributes are stored as bit-packed integers for memory efficiency,
-    # following the xterm.js layout.
+    # following the packed cell layout.
     class CellData
       include BufferConstants
 
@@ -150,7 +150,7 @@ module RTerm
         @fg = value ? (@fg | FgFlags::STRIKETHROUGH) : (@fg & ~FgFlags::STRIKETHROUGH)
       end
 
-      # Note: italic is stored in bg word (xterm.js convention)
+      # Note: italic is stored in bg word
       def italic?
         (@bg & BgFlags::ITALIC) != 0
       end

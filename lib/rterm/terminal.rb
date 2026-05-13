@@ -144,17 +144,17 @@ module RTerm
       @terminal.rows
     end
 
-    # xterm.js compatibility DOM-like container.
+    # DOM-like container.
     def element
       @container
     end
 
-    # xterm.js compatibility hidden textarea element.
+    # Hidden textarea element.
     def textarea
       @textarea
     end
 
-    # xterm.js localizable strings.
+    # Localizable strings.
     # @return [Hash]
     def strings
       LOCALIZABLE_STRINGS.dup
@@ -164,7 +164,7 @@ module RTerm
 
     # Writes data to the terminal (as if received from PTY).
     # @param data [String] the data to write
-    # @param callback [Proc, nil] optional callback (xterm.js compatibility)
+    # @param callback [Proc, nil] optional callback
     def write(data, callback = nil, &block)
       callback = block || callback
       @terminal.write(normalize_write_data(data))
@@ -173,7 +173,7 @@ module RTerm
 
     # Writes data followed by a carriage return and newline.
     # @param data [String] the data to write
-    # @param callback [Proc, nil] optional callback (xterm.js compatibility)
+    # @param callback [Proc, nil] optional callback
     def writeln(data, callback = nil, &block)
       callback = block || callback
       @terminal.writeln(normalize_write_data(data))
@@ -195,7 +195,7 @@ module RTerm
       id
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     def registerCharacterJoiner(&block)
       register_character_joiner(&block)
     end
@@ -211,7 +211,7 @@ module RTerm
       existed
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     def deregisterCharacterJoiner(id)
       deregister_character_joiner(id)
     end
@@ -267,7 +267,7 @@ module RTerm
       input(encoded) if encoded
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @param key [Symbol, String]
     # @param modifiers [Array<Symbol>]
     # @param text [String, nil]
@@ -276,14 +276,14 @@ module RTerm
       attach_custom_key_event_handler(&block)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @param block [Proc]
     # @return [Common::Disposable]
     def attachCustomWheelEventHandler(&block)
       attach_custom_wheel_event_handler(&block)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @param key [Symbol, String]
     # @param modifiers [Array<Symbol>]
     # @param text [String, nil]
@@ -292,7 +292,7 @@ module RTerm
       on_key(&block)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @param key [Symbol, String]
     # @param modifiers [Array<Symbol>]
     # @param text [String, nil]
@@ -301,7 +301,7 @@ module RTerm
       on_data(&block)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @param key [Symbol, String]
     # @param modifiers [Array<Symbol>]
     # @param text [String, nil]
@@ -310,59 +310,59 @@ module RTerm
       on_binary(&block)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @param block [Proc]
     # @return [Common::Disposable]
     def onBell(&block)
       on_bell(&block)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @return [Common::Disposable]
     def onScroll(&block)
       on_scroll(&block)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @return [Common::Disposable]
     def onResize(&block)
       on_resize(&block)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @return [Common::Disposable]
     def onSelectionChange(&block)
       on_selection_change(&block)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @return [Common::Disposable]
     def onTitleChange(&block)
       on_title_change(&block)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @param block [Proc]
     # @return [Common::Disposable]
     def onContextMenu(&block)
       on_context_menu(&block)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @param block [Proc]
     # @return [Common::Disposable]
     def onRender(&block)
       on(:render, &block)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @param line [Integer, nil] visible line, default is the cursor line
     # @return [Marker, nil]
     def registerMarker(line = nil)
       register_marker(line)
     end
 
-    # xterm.js compatibility marker API.
+    # Marker API.
     #
     # @param line [Integer, nil] visible line, default is the cursor line
     # @yield [Marker] called when marker is disposed
@@ -380,7 +380,7 @@ module RTerm
       marker
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @param line [Integer, nil] visible line, default is the cursor line
     # @yield [Marker] called when marker is disposed
     # @return [Marker, nil]
@@ -388,19 +388,19 @@ module RTerm
       add_marker(line, &block)
     end
 
-    # xterm.js compatibility API to register link providers.
+    # Registers link providers.
     # The WebLinks addon is loaded on demand.
     def register_link_provider(provider = nil, &block)
       require_relative "addons/web_links/web_links" unless defined?(RTerm::Addon::WebLinks)
       web_links_addon.register_link_provider(provider, &block)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     def registerLinkProvider(provider = nil, &block)
       register_link_provider(provider, &block)
     end
 
-    # Register a link matcher callback similar to xterm.js API.
+    # Registers a link matcher callback.
     def register_link_matcher(matcher, handler = nil, options = nil)
       require_relative "addons/web_links/web_links" unless defined?(RTerm::Addon::WebLinks)
 
@@ -417,7 +417,7 @@ module RTerm
       id
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     def registerLinkMatcher(matcher, handler = nil, options = nil)
       register_link_matcher(matcher, handler, options)
     end
@@ -433,12 +433,12 @@ module RTerm
       true
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     def deregisterLinkMatcher(id)
       deregister_link_matcher(id)
     end
 
-    # xterm.js compatibility API to register marker decorations.
+    # Registers marker decorations.
     def register_decoration(marker_or_options = nil, options = nil)
       normalized_options = {}
       marker = nil
@@ -460,12 +460,12 @@ module RTerm
       decoration
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     def registerDecoration(marker_or_options = nil, options = nil)
       register_decoration(marker_or_options, options)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @param line [Integer, nil] visible line, default is the cursor line
     # @return [Marker, nil]
     def register_marker(line = nil)
@@ -515,13 +515,13 @@ module RTerm
       @terminal.input_handler.modes
     end
 
-    # xterm.js compatibility event registration for active buffer change.
+    # Event registration for active buffer changes.
     # @return [Common::Disposable]
     def on_buffer_change(&block)
       @terminal.buffer_set.on(:buffer_change, &block)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     def onBufferChange(&block)
       on_buffer_change(&block)
     end
@@ -539,7 +539,7 @@ module RTerm
       @terminal.get_option(name)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @param name [Symbol, String]
     # @return [Object]
     def getOption(name)
@@ -554,7 +554,7 @@ module RTerm
       @terminal.set_option(name, value)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @param name [Symbol, String]
     # @param value [Object]
     # @return [TerminalOptions]
@@ -562,7 +562,7 @@ module RTerm
       set_option(name, value)
     end
 
-    # xterm.js compatibility setter.
+    # Option setter.
     # @param new_options [Hash]
     # @return [TerminalOptions]
     def options=(new_options)
@@ -591,7 +591,7 @@ module RTerm
       true
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     alias clearTextureAtlas clear_texture_atlas
 
     # Resolves renderer-facing colors for a cell without mutating buffer attributes.
@@ -623,161 +623,161 @@ module RTerm
       @terminal.clear
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @param block [Proc]
     # @return [Common::Disposable]
     def on_data(&block)
       on(:data, &block)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @param block [Proc]
     # @return [Common::Disposable]
     def on_binary(&block)
       on(:binary, &block)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @param block [Proc]
     # @return [Common::Disposable]
     def on_resize(&block)
       on(:resize, &block)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @param block [Proc]
     # @return [Common::Disposable]
     def on_scroll(&block)
       on(:scroll, &block)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @param block [Proc]
     # @return [Common::Disposable]
     def on_selection_change(&block)
       on(:selection_change, &block)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @param block [Proc]
     # @return [Common::Disposable]
     def on_title_change(&block)
       on(:title_change, &block)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @param block [Proc]
     # @return [Common::Disposable]
     def on_key(&block)
       on(:key, &block)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @param block [Proc]
     # @return [Common::Disposable]
     def on_bell(&block)
       on(:bell, &block)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @param block [Proc]
     # @return [Common::Disposable]
     def on_context_menu(&block)
       on(:context_menu, &block)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @param block [Proc]
     # @return [Common::Disposable]
     def onCursorMove(&block)
       on(:cursor_move, &block)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @param block [Proc]
     # @return [Common::Disposable]
     def onLineFeed(&block)
       on(:line_feed, &block)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @param block [Proc]
     # @return [Common::Disposable]
     def onWriteParsed(&block)
       on_write_parsed(&block)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @param block [Proc]
     # @return [Common::Disposable]
     def onFocus(&block)
       on_focus(&block)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @param block [Proc]
     # @return [Common::Disposable]
     def onBlur(&block)
       on_blur(&block)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @param block [Proc]
     # @return [Common::Disposable]
     def on_cursor_move(&block)
       on(:cursor_move, &block)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @param block [Proc]
     # @return [Common::Disposable]
     def on_line_feed(&block)
       on(:line_feed, &block)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @param block [Proc]
     # @return [Common::Disposable]
     def on_write_parsed(&block)
       on(:write_parsed, &block)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @param block [Proc]
     # @return [Common::Disposable]
     def on_focus(&block)
       on(:focus, &block)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @param block [Proc]
     # @return [Common::Disposable]
     def on_blur(&block)
       on(:blur, &block)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @param block [Proc]
     # @return [Common::Disposable]
     def onOptionChange(&block)
       on(:option_change, &block)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @param block [Proc]
     # @return [Common::Disposable]
     def on_option_change(&block)
       on(:option_change, &block)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @param block [Proc]
     # @return [Common::Disposable]
     def on_dispose(&block)
       on(:dispose, &block)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     def onDispose(&block)
       on_dispose(&block)
     end
@@ -798,7 +798,7 @@ module RTerm
     end
 
     # Scrolls the viewport by the given number of lines.
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     def scrollLines(amount)
       scroll_lines(amount)
     end
@@ -810,7 +810,7 @@ module RTerm
     end
 
     # Scrolls the viewport by the given number of pages.
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     def scrollPages(count)
       scroll_pages(count)
     end
@@ -824,7 +824,7 @@ module RTerm
     end
 
     # Scrolls the viewport to the specified history row.
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     def scrollToLine(row)
       scroll_to_line(row)
     end
@@ -835,7 +835,7 @@ module RTerm
     end
 
     # Scrolls to the top of the scrollback.
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     def scrollToTop
       scroll_to_top
     end
@@ -846,13 +846,13 @@ module RTerm
     end
 
     # Scrolls to the bottom.
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     def scrollToBottom
       scroll_to_bottom
     end
 
     # Scrolls to keep the cursor line visible.
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     def scrollToCursor
       scroll_to_cursor
     end
@@ -884,13 +884,13 @@ module RTerm
       @focused
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @return [Boolean]
     def isFocused
       @focused
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @return [Boolean]
     def is_focused
       @focused
@@ -941,7 +941,7 @@ module RTerm
       )
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @return [void]
     def selectWord(column, row)
       select_word(column, row)
@@ -958,7 +958,7 @@ module RTerm
       )
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @return [void]
     def selectUrl(column, row)
       select_url(column, row)
@@ -975,13 +975,13 @@ module RTerm
       )
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @return [void]
     def selectLine(row, include_wrapped: true)
       select_line(row, include_wrapped: include_wrapped)
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @param data [String, nil] optional text override
     # @return [String]
     def copy(data = nil)
@@ -990,7 +990,7 @@ module RTerm
       text
     end
 
-    # Applies xterm-style click selection behavior.
+    # Applies click selection behavior.
     # @param column [Integer] cell column
     # @param row [Integer] visible row
     # @param click_count [Integer]
@@ -1022,7 +1022,7 @@ module RTerm
       )
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @return [void]
     def selectRectangle(start_column, start_row, end_column, end_row)
       select_rectangle(start_column, start_row, end_column, end_row)
@@ -1036,13 +1036,13 @@ module RTerm
       )
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @return [void]
     def selectAll
       select_all
     end
 
-    # xterm.js compatibility selection API.
+    # Selection API.
     # Selects lines from start to end (inclusive).
     # @param start [Integer]
     # @param finish [Integer]
@@ -1067,7 +1067,7 @@ module RTerm
       )
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @param start [Integer]
     # @param finish [Integer]
     # @return [void]
@@ -1076,36 +1076,36 @@ module RTerm
     end
 
     # Returns current selected text.
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     def get_selection
       selection
     end
 
     # Returns current selected text.
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     def getSelection
       get_selection
     end
 
     # Whether any text is currently selected.
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     def has_selection
       !selection.empty?
     end
 
     # Whether any text is currently selected.
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     def hasSelection
       has_selection
     end
 
-    # xterm.js compatibility method.
+    # Selection position helper.
     # @return [Hash, nil]
     def getSelectionPosition
       get_selection_position
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @return [Hash, nil]
     def get_selection_position
       return nil unless @selection
@@ -1146,7 +1146,7 @@ module RTerm
     end
 
     # Clears the current selection.
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     def clearSelection
       clear_selection
     end
@@ -1305,7 +1305,7 @@ module RTerm
       @terminal.on(event, &block)
     end
 
-    # Attach a custom key event handler in xterm.js-compatible form.
+    # Attach a custom key event handler.
     # Return a disposable so callers can remove the handler.
     #
     # @yield [Hash] key event payload
@@ -1319,7 +1319,7 @@ module RTerm
       end
     end
 
-    # Attach a custom wheel event handler in xterm.js-compatible form.
+    # Attach a custom wheel event handler.
     # Return a disposable so callers can remove the handler.
     #
     # @yield [Hash] wheel event payload
@@ -1333,7 +1333,7 @@ module RTerm
       end
     end
 
-    # Attach a custom mouse event handler in xterm.js-compatible form.
+    # Attach a custom mouse event handler.
     # Return a disposable so callers can remove the handler.
     #
     # @yield [Hash] mouse event payload
@@ -1347,12 +1347,12 @@ module RTerm
       end
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     def attachCustomMouseEventHandler(&block)
       attach_custom_mouse_event_handler(&block)
     end
 
-    # Attach a custom context menu event handler in xterm.js-compatible form.
+    # Attach a custom context menu event handler.
     # Return a disposable so callers can remove the handler.
     #
     # @yield [Hash] context menu payload
@@ -1366,7 +1366,7 @@ module RTerm
       end
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @return [Common::Disposable]
     def attachCustomContextMenuEventHandler(&block)
       attach_custom_context_menu_event_handler(&block)
@@ -1424,14 +1424,14 @@ module RTerm
       @markers.dup
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     # @return [Array<Marker>]
     def getMarkers
       markers
     end
 
     # Loads an addon into the terminal.
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     def loadAddon(addon)
       load_addon(addon)
     end
@@ -1505,7 +1505,7 @@ module RTerm
       was_user_input
     end
 
-    # xterm.js compatibility helper for normalizing matcher options.
+    # Normalizes matcher options.
     def normalize_link_matcher_options(options)
       normalized = options.to_h
       {
@@ -1518,7 +1518,7 @@ module RTerm
       }.compact
     end
 
-    # xterm.js compatibility helper to convert regex matches to provider links.
+    # Converts regex matches to provider links.
     def scan_link_matches(text, matcher, handler, options, _row)
       normalized_handler = handler || options[:handler]
       match_index = [options[:match_index].to_i, 0].max
@@ -1947,10 +1947,10 @@ module RTerm
       @buffer_set.alt
     end
 
-    # xterm.js compatibility alias.
+    # CamelCase alias.
     alias alternate alt
 
-    # xterm.js compatibility alias for buffer change events.
+    # CamelCase alias for buffer change events.
     def on_buffer_change(&block)
       on(:buffer_change, &block)
     end
@@ -1993,7 +1993,7 @@ module RTerm
       @parser.set_dcs_handler(id, &block)
     end
 
-    # xterm.js compatibility aliases.
+    # CamelCase aliases.
     alias set_csi_handler register_csi_handler
     alias set_esc_handler register_esc_handler
     alias set_osc_handler register_osc_handler
@@ -2027,7 +2027,7 @@ module RTerm
       @unicode_handler.versions
     end
 
-    # xterm.js compatibility camelCase aliases.
+    # CamelCase aliases.
     alias activeVersion active_version
     alias activeVersion= active_version=
 

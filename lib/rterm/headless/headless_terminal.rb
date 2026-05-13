@@ -50,7 +50,7 @@ module RTerm
       end
 
       # Scrolls the viewport so the cursor stays at the same row in view.
-      # This mirrors xterm.js `scrollToCursor` behavior: the cursor line is
+      # This mirrors scrollToCursor behavior: the cursor line is
       # made visible without moving its on-screen row.
       def scroll_to_cursor
         max_disp = [buffer.lines.length - buffer.rows, 0].max

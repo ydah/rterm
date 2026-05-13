@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module RTerm
-  # Terminal color theme compatible with xterm.js theme keys.
+  # Terminal color theme browser terminal theme keys.
   class Theme
     DEFAULTS = {
       foreground: "#ffffff",

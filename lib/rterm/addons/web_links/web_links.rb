@@ -63,7 +63,7 @@ module RTerm
         links.sort_by { |link| [link[:row], link[:col], link[:url].to_s] }
       end
 
-      # xterm.js-style provider entry point. Returns and optionally yields links.
+      # Provider entry point. Returns and optionally yields links.
       # @param row [Integer] visible row
       # @yield [Array<Hash>]
       # @return [Array<Hash>]

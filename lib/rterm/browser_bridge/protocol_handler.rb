@@ -5,7 +5,7 @@ require 'json'
 module RTerm
   module BrowserBridge
     # Handles encoding/decoding of JSON messages between
-    # the Ruby backend and xterm.js frontend.
+    # the Ruby backend and browser frontend.
     class ProtocolHandler
       # Message types
       module MessageType

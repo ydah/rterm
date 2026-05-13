@@ -2,7 +2,7 @@
 
 module RTerm
   module Common
-    # Parser state machine states, mirroring xterm.js ParserState.
+    # Parser state machine states, for terminal parsing.
     module ParserState
       GROUND              = 0
       ESCAPE              = 1
