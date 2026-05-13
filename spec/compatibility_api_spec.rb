@@ -541,6 +541,38 @@ RSpec.describe "specification compatibility APIs" do
     expect(addon.find_links).to include(hash_including(url: "https://example.local/custom"))
   end
 
+  it "supports registerLinkMatcher compatibility API" do
+    terminal = RTerm::Terminal.new
+    activated = []
+
+    matcher_id = terminal.registerLinkMatcher(%r{@[a-z]+}, ->(_event, uri) { activated << uri })
+    terminal.write("ping @alice")
+
+    addon = terminal.instance_variable_get(:@addons).find { |item| item.is_a?(RTerm::Addon::WebLinks) }
+    links = addon.find_links
+
+    expect(matcher_id).to be_a(Integer)
+    expect(links).to include(hash_including(url: "@alice", row: 0, col: 5, length: 6))
+    expect(addon.open_link(links.first)).to be true
+    expect(activated).to eq(["@alice"])
+  end
+
+  it "supports deregisterLinkMatcher removing matcher callbacks" do
+    terminal = RTerm::Terminal.new
+    activated = []
+
+    matcher_id = terminal.registerLinkMatcher(%r{@[a-z]+}, ->(_event, uri) { activated << uri })
+    terminal.write("ping @alice")
+
+    expect(terminal.deregisterLinkMatcher(matcher_id)).to be true
+
+    addon = terminal.instance_variable_get(:@addons).find { |item| item.is_a?(RTerm::Addon::Base) && item.respond_to?(:find_links) }
+    links = addon.find_links
+
+    expect(links).to be_empty
+    expect(activated).to be_empty
+  end
+
   it "supports registerDecoration alias" do
     terminal = RTerm::Terminal.new
     marker = terminal.registerMarker

@@ -118,6 +118,8 @@ module RTerm
       @focused = false
       @markers = []
       @decorations = []
+      @link_matchers = {}
+      @next_link_matcher_id = 1
       @character_joiners = {}
       @next_character_joiner_id = 1
       @last_scroll_position = @terminal.buffer_set.active.y_disp
@@ -395,6 +397,44 @@ module RTerm
     # xterm.js compatibility alias.
     def registerLinkProvider(provider = nil, &block)
       register_link_provider(provider, &block)
+    end
+
+    # Register a link matcher callback similar to xterm.js API.
+    def register_link_matcher(matcher, handler = nil, options = nil)
+      require_relative "addons/web_links/web_links" unless defined?(RTerm::Addon::WebLinks)
+
+      matcher = Regexp.new(matcher) unless matcher.is_a?(Regexp)
+      normalized = normalize_link_matcher_options(options)
+      id = @next_link_matcher_id
+      @next_link_matcher_id += 1
+
+      provider = lambda do |text, row|
+        scan_link_matches(text, matcher, handler, normalized, row)
+      end
+
+      @link_matchers[id] = web_links_addon.register_link_provider(provider)
+      id
+    end
+
+    # xterm.js compatibility alias.
+    def registerLinkMatcher(matcher, handler = nil, options = nil)
+      register_link_matcher(matcher, handler, options)
+    end
+
+    # Remove a previously registered link matcher.
+    # @param id [Integer]
+    # @return [Boolean]
+    def deregister_link_matcher(id)
+      disposable = @link_matchers.delete(id.to_i)
+      return false unless disposable
+
+      disposable.dispose
+      true
+    end
+
+    # xterm.js compatibility alias.
+    def deregisterLinkMatcher(id)
+      deregister_link_matcher(id)
     end
 
     # xterm.js compatibility API to register marker decorations.
@@ -1399,6 +1439,8 @@ module RTerm
 
       @disposed = true
       @terminal.emit(:dispose)
+      @link_matchers.each_value(&:dispose)
+      @link_matchers.clear
       @markers.each(&:dispose)
       @markers.clear
       @addons.each(&:dispose)
@@ -1439,6 +1481,100 @@ module RTerm
       @selection = selection
       @terminal.emit(:selection_change, selection_change_payload)
       @selection
+    end
+
+    # xterm.js compatibility helper for normalizing matcher options.
+    def normalize_link_matcher_options(options)
+      normalized = options.to_h
+      {
+        match_index: normalized[:matchIndex] || normalized[:match_index],
+        validation: normalized[:validation],
+        url: normalized[:url],
+        handler: normalized[:handler],
+        hover: normalized[:hover],
+        leave: normalized[:leave]
+      }.compact
+    end
+
+    # xterm.js compatibility helper to convert regex matches to provider links.
+    def scan_link_matches(text, matcher, handler, options, _row)
+      normalized_handler = handler || options[:handler]
+      match_index = [options[:match_index].to_i, 0].max
+      validation = options[:validation]
+
+      text.scan(matcher).filter_map do
+        match = Regexp.last_match
+        match_text = match[match_index]
+        next if match_text.nil?
+
+        next if validation && validation.call(match_text) == false
+
+        start = match.begin(match_index)
+        next if start.nil?
+
+        url = match_text.to_s
+        url = options[:url].call(match_text) if options[:url]
+        next if url.nil?
+
+        text_label = match_text.to_s
+
+        {
+          url: url,
+          text: text_label,
+          start: start,
+          length: text_label.length,
+          activate: matcher_activate_handler(normalized_handler, options),
+          hover: matcher_hover_handler(options),
+          leave: matcher_leave_handler(options)
+        }
+      end
+    end
+
+    # Builds an activate callback for a link matcher.
+    def matcher_activate_handler(handler, _options)
+      return nil unless handler
+
+      lambda do |link|
+        if handler.arity.zero?
+          handler.call
+        elsif handler.arity == 1
+          handler.call(link[:url])
+        elsif handler.arity == 2
+          handler.call(nil, link[:url])
+        else
+          handler.call(nil, link[:url], link)
+        end
+      end
+    end
+
+    # Builds an optional hover callback from matcher options.
+    def matcher_hover_handler(options)
+      callback = options[:hover]
+      return nil unless callback
+
+      lambda do |link|
+        case callback.arity
+        when 0 then callback.call
+        when 1 then callback.call(link[:url])
+        when 2 then callback.call(nil, link[:url])
+        else callback.call(nil, link[:url], link)
+        end
+      end
+    end
+
+    # Builds an optional leave callback from matcher options.
+    def matcher_leave_handler(options)
+      callback = options[:leave]
+      return nil unless callback
+
+      lambda do |link|
+        case callback.arity
+        when 0 then callback.call
+        when 1 then callback.call(link[:url])
+        when 2 then callback.call(nil, link[:url])
+        else callback.call(nil, link[:url], link)
+        end
+      end
     end
 
     def selection_change_payload
