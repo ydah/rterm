@@ -80,7 +80,7 @@ module RTerm
     private
 
     def symbolize_keys(hash)
-      # Backward-compatible helper retained for clarity in nested copies.
+      # Legacy helper retained for clarity in nested copies.
       hash.each_with_object({}) do |(key, value), result|
         result[key.to_sym] = value
       end

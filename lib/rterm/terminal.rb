@@ -182,7 +182,7 @@ module RTerm
 
     # Registers a character joiner and returns its identifier.
     #
-    # The joiner callback is stored for API compatibility but currently
+    # The joiner callback is stored for public API behavior but currently
     # is not used by the headless rendering path.
     #
     # @return [Integer]
@@ -585,7 +585,7 @@ module RTerm
       @terminal.input_handler.images
     end
 
-    # Clears cached texture atlas resources (headless compatibility no-op).
+    # Clears cached texture atlas resources (headless no-op).
     # @return [Boolean]
     def clear_texture_atlas
       true
@@ -1254,7 +1254,7 @@ module RTerm
       @terminal.input_handler.focus_report(focused)
     end
 
-    # Emits a context menu event with compatibility payload.
+    # Emits a context menu event with a normalized payload.
     #
     # @param event [Hash, Integer] either a payload hash, or a column value.
     # @param row [Integer, nil] row value when event is not a hash.

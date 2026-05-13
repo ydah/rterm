@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 RSpec.describe RTerm::TerminalOptions do
-  it "provides terminal-compatible defaults" do
+  it "provides terminal defaults" do
     options = described_class.new
 
     expect(options.cols).to eq(80)

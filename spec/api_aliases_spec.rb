@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-RSpec.describe "specification compatibility APIs" do
+RSpec.describe "specification APIs" do
   it "exposes CircularList#is_full? as an alias" do
     list = RTerm::Common::CircularList.new(1)
     list.push(:item)
@@ -190,7 +190,7 @@ RSpec.describe "specification compatibility APIs" do
     )
   end
 
-  it "emits terminal compatibility events" do
+  it "emits terminal events" do
     terminal = RTerm::Terminal.new
     data_event = []
     binary_event = []
@@ -222,7 +222,7 @@ RSpec.describe "specification compatibility APIs" do
     expect(scroll_events).to be > 0
   end
 
-  it "supports additional terminal compatibility events" do
+  it "supports additional terminal events" do
     terminal = RTerm::Terminal.new
     focus_events = 0
     blur_events = 0
@@ -325,7 +325,7 @@ RSpec.describe "specification compatibility APIs" do
     )
   end
 
-  it "calls write callbacks for compatibility" do
+  it "calls write callbacks" do
     terminal = RTerm::Terminal.new
     calls = []
 
@@ -497,7 +497,7 @@ RSpec.describe "specification compatibility APIs" do
     expect(emitted).to eq(%w[b a])
   end
 
-  it "supports no-op headless focus/focus/refresh methods for compatibility" do
+  it "supports no-op headless focus/focus/refresh methods" do
     terminal = RTerm::Terminal.new
 
     expect { terminal.open; terminal.focus; terminal.blur; terminal.refresh }.not_to raise_error
@@ -555,14 +555,14 @@ RSpec.describe "specification compatibility APIs" do
     expect(disposed).to eq([marker])
   end
 
-  it "supports compatibility string resources" do
+  it "supports string resources" do
     terminal = RTerm::Terminal.new
 
     expect(terminal.strings["promptLabel"]).to eq("Terminal input")
     expect(terminal.strings["tooMuchOutput"]).to include("output is too large")
   end
 
-  it "returns terminal element and textarea compatibility properties" do
+  it "returns terminal element and textarea properties" do
     terminal = RTerm::Terminal.new
     container = Object.new
 
@@ -572,7 +572,7 @@ RSpec.describe "specification compatibility APIs" do
     expect(terminal.textarea).to be_nil
   end
 
-  it "supports registerLinkProvider compatibility alias" do
+  it "supports registerLinkProvider alias" do
     terminal = RTerm::Terminal.new
 
     terminal.registerLinkProvider do |_text, row|
@@ -586,7 +586,7 @@ RSpec.describe "specification compatibility APIs" do
     expect(addon.find_links).to include(hash_including(url: "https://example.local/custom"))
   end
 
-  it "supports registerLinkMatcher compatibility API" do
+  it "supports registerLinkMatcher API" do
     terminal = RTerm::Terminal.new
     activated = []
 
@@ -631,7 +631,7 @@ RSpec.describe "specification compatibility APIs" do
     expect(terminal.instance_variable_get(:@decorations)).not_to include(decoration)
   end
 
-  it "supports clearTextureAtlas as no-op compatibility API" do
+  it "supports clearTextureAtlas as no-op API" do
     terminal = RTerm::Terminal.new
 
     expect(terminal.clearTextureAtlas).to be(true)

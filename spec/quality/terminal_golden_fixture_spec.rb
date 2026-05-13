@@ -2,8 +2,8 @@
 
 require "yaml"
 
-RSpec.describe "xterm golden fixture comparison" do
-  fixtures = YAML.load_file(File.expand_path("../fixtures/xterm_golden_sequences.yml", __dir__))
+RSpec.describe "terminal golden fixture comparison" do
+  fixtures = YAML.load_file(File.expand_path("../fixtures/terminal_golden_sequences.yml", __dir__))
 
   fixtures.each do |fixture|
     it "matches #{fixture.fetch('name')}" do

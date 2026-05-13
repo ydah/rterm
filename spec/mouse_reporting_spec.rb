@@ -41,7 +41,7 @@ RSpec.describe "mouse report generation" do
     expect(terminal.modes[:sgr_pixels_mode]).to be true
   end
 
-  it "includes button and modifier compatibility bits" do
+  it "includes button and modifier bits" do
     terminal.write("\e[?1006h\e[?1003h")
 
     expect(
