@@ -164,7 +164,11 @@ RSpec.describe "specification APIs" do
     expect(terminal.cols).to eq(8)
     expect(terminal.getOption(:cols)).to eq(8)
     expect(terminal.getOption("rows")).to eq(3)
-    expect { terminal.setOption("scrollback", 100) }.to raise_error(NotImplementedError)
+
+    terminal.setOption("scrollback", 100)
+    expect(terminal.getOption("scrollback")).to eq(100)
+    expect(terminal.internal.buffer_set.normal.scrollback).to eq(100)
+    expect(terminal.internal.buffer_set.alt.scrollback).to eq(0)
   end
 
   it "emits option change events" do
@@ -187,6 +191,29 @@ RSpec.describe "specification APIs" do
         old_value: :block,
         new_value: :underline
       )
+    )
+  end
+
+  it "updates scrollback at runtime and emits an option change event" do
+    terminal = RTerm::Terminal.new(cols: 4, rows: 2, scrollback: 5)
+    changes = []
+
+    terminal.onOptionChange { |payload| changes << payload if payload[:name] == :scrollback }
+    10.times { |index| terminal.writeln("l#{index}") }
+    terminal.scrollToTop
+
+    terminal.setOption("scrollback", "2")
+
+    active = terminal.internal.buffer_set.active
+    expect(terminal.getOption(:scrollback)).to eq(2)
+    expect(active.scrollback).to eq(2)
+    expect(active.lines.max_length).to eq(4)
+    expect(active.y_base).to eq(2)
+    expect(active.y_disp).to be <= active.y_base
+    expect(changes.last).to include(
+      old_value: 5,
+      new_value: 2,
+      name_camel: "scrollback"
     )
   end
 

@@ -158,6 +158,46 @@ RSpec.describe RTerm::Common::Buffer do
     end
   end
 
+  describe "#scrollback=" do
+    it "increases retained scrollback capacity" do
+      small = described_class.new(5, 2, 1)
+      4.times { small.scroll_up(1) }
+
+      small.scrollback = 4
+
+      expect(small.scrollback).to eq(4)
+      expect(small.lines.max_length).to eq(6)
+      expect(small.y_base).to eq(1)
+    end
+
+    it "trims oldest lines and clamps viewport positions when decreasing" do
+      small = described_class.new(5, 2, 5)
+      8.times { small.scroll_up(1) }
+      small.y_disp = 3
+
+      small.scrollback = 2
+
+      expect(small.scrollback).to eq(2)
+      expect(small.lines.max_length).to eq(4)
+      expect(small.lines.length).to eq(4)
+      expect(small.y_base).to eq(2)
+      expect(small.y_disp).to eq(0)
+      expect(small.get_line(0)).to be_a(RTerm::Common::BufferLine)
+      expect(small.get_line(1)).to be_a(RTerm::Common::BufferLine)
+    end
+
+    it "normalizes negative scrollback to zero" do
+      small = described_class.new(5, 2, 5)
+      4.times { small.scroll_up(1) }
+
+      small.scrollback = -1
+
+      expect(small.scrollback).to eq(0)
+      expect(small.lines.max_length).to eq(2)
+      expect(small.y_base).to eq(0)
+    end
+  end
+
   describe "#save_cursor / #restore_cursor" do
     it "saves and restores cursor position" do
       buffer.x = 10
@@ -213,6 +253,15 @@ RSpec.describe RTerm::Common::BufferSet do
     it "creates normal and alternate buffers with expected type labels" do
       expect(buffer_set.normal.type).to eq("normal")
       expect(buffer_set.alt.type).to eq("alternate")
+    end
+
+    it "updates normal scrollback without changing alternate scrollback" do
+      buffer_set.scrollback = 12
+
+      expect(buffer_set.normal.scrollback).to eq(12)
+      expect(buffer_set.normal.lines.max_length).to eq(rows + 12)
+      expect(buffer_set.alt.scrollback).to eq(0)
+      expect(buffer_set.alt.lines.max_length).to eq(rows)
     end
 
     it "emits buffer_change events when switching buffers" do

@@ -35,6 +35,15 @@ module RTerm
         @active = @normal
         emit(:buffer_change, active: @active, old_active: previous)
       end
+
+      # Updates scrollback capacity on the normal buffer.
+      # The alternate buffer intentionally remains scrollback-free.
+      def scrollback=(value)
+        @normal.scrollback = value
+      end
+
+      alias set_scrollback scrollback=
+      alias setScrollback scrollback=
     end
   end
 end

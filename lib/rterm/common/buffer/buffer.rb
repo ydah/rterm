@@ -97,6 +97,27 @@ module RTerm
         @y = [@y, new_rows - 1].min
       end
 
+      # Updates scrollback capacity, preserving the newest retained lines.
+      # @param value [Integer] new number of scrollback lines
+      # @return [Integer]
+      def scrollback=(value)
+        new_scrollback = [value.to_i, 0].max
+        return @scrollback if new_scrollback == @scrollback
+
+        old_length = @lines.length
+        new_capacity = @rows + new_scrollback
+        removed = [old_length - new_capacity, 0].max
+
+        @scrollback = new_scrollback
+        @lines.max_length = new_capacity
+        @lines.push(new_blank_line) while @lines.length < @rows
+
+        @y_base = [[@y_base - removed, 0].max, max_y_base].min
+        @y_disp = [[@y_disp - removed, 0].max, @y_base].min
+        @scroll_bottom = [@scroll_bottom, @rows - 1].min
+        @scrollback
+      end
+
       # Saves the current cursor position and optional attributes.
       def save_cursor(cur_attr = nil)
         @saved_x = @x
@@ -167,6 +188,8 @@ module RTerm
       alias getLine get_line
       alias getWrappedRangeForLine get_wrapped_range_for_line
       alias translateBufferLineToString translate_buffer_line_to_string
+      alias set_scrollback scrollback=
+      alias setScrollback scrollback=
       def lines_length
         @lines.length
       end

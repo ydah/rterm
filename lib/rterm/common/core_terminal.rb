@@ -95,7 +95,7 @@ module RTerm
       # @return [TerminalOptions]
       def set_option(name, value)
         key = normalize_option_name(name)
-        raise NotImplementedError, "Runtime scrollback changes are not supported" if key == :scrollback
+        value = [value.to_i, 0].max if key == :scrollback
 
         old_value = @options[key]
         return @options if old_value == value
@@ -107,6 +107,9 @@ module RTerm
         case key
         when :cols, :rows
           resize(@options.cols, @options.rows)
+        when :scrollback
+          @scrollback = @options.scrollback
+          @buffer_set.scrollback = @scrollback
         when :cursor_blink
           @input_handler.send(:set_cursor_blink, @options.cursor_blink)
         when :cursor_style
