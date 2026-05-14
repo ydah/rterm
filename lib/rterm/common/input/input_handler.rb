@@ -16,7 +16,7 @@ module RTerm
       attr_reader :autowrap, :cursor_hidden, :bracketed_paste_mode, :insert_mode,
                   :origin_mode, :application_cursor_keys_mode, :application_keypad_mode,
                   :color_manager, :cursor_style, :cursor_blink, :reverse_wraparound,
-                  :title, :icon_name, :title_stack, :images
+                  :synchronized_output_mode, :title, :icon_name, :title_stack, :images
 
       def initialize(buffer_set, parser, unicode_handler = nil, options = {})
         if unicode_handler.is_a?(Hash)
@@ -33,6 +33,7 @@ module RTerm
         @default_cursor_blink = options[:cursor_blink] == true
         @cursor_blink = @default_cursor_blink
         @bracketed_paste_mode = false
+        @synchronized_output_mode = false
         @insert_mode = false
         @origin_mode = false
         @application_cursor_keys_mode = false
@@ -86,6 +87,7 @@ module RTerm
           reverse_wraparound_mode: @reverse_wraparound,
           sgr_mouse_mode: @sgr_mouse_mode,
           sgr_pixels_mode: @sgr_pixels_mode,
+          synchronized_output_mode: @synchronized_output_mode,
           urxvt_mouse_mode: @urxvt_mouse_mode,
           utf8_mouse_mode: @utf8_mouse_mode,
           wraparound_mode: @autowrap
@@ -1261,6 +1263,15 @@ module RTerm
         emit(:data, "\e[#{prefix}#{mode};#{status}$y")
       end
 
+      def set_synchronized_output_mode(enabled)
+        value = enabled == true
+        return value if @synchronized_output_mode == value
+
+        @synchronized_output_mode = value
+        emit(:synchronized_output, { active: value, mode: 2026 })
+        value
+      end
+
       def mode_status(mode)
         case mode
         when 4
@@ -1308,6 +1319,8 @@ module RTerm
           @buffer_set.active.equal?(@buffer_set.alt) ? 1 : 2
         when 2004
           @bracketed_paste_mode ? 1 : 2
+        when 2026
+          @synchronized_output_mode ? 1 : 2
         else
           0
         end
@@ -1365,6 +1378,8 @@ module RTerm
           @buffer_set.activate_alt_buffer(clear: true)
         when 2004
           @bracketed_paste_mode = true
+        when 2026
+          set_synchronized_output_mode(true)
         end
       end
 
@@ -1411,6 +1426,8 @@ module RTerm
           restore_cursor_state
         when 2004
           @bracketed_paste_mode = false
+        when 2026
+          set_synchronized_output_mode(false)
         end
       end
 
@@ -1428,6 +1445,7 @@ module RTerm
         @cursor_blink = @default_cursor_blink
         @cursor_style = @default_cursor_style
         @bracketed_paste_mode = false
+        set_synchronized_output_mode(false)
         @insert_mode = false
         @origin_mode = false
         @application_cursor_keys_mode = false

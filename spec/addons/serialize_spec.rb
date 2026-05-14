@@ -64,7 +64,7 @@ RSpec.describe RTerm::Addon::Serialize do
     end
 
     it "serializes extended terminal modes" do
-      terminal.write("\e[?1h\e=\e[?12h\e[?45h\e[?1002h\e[?1006h\e[?1004h\e[?2004h")
+      terminal.write("\e[?1h\e=\e[?12h\e[?45h\e[?1002h\e[?1006h\e[?1004h\e[?2004h\e[?2026h")
 
       serialized = serializer.serialize
       replayed = RTerm::Terminal.new(cols: 80, rows: 24)
@@ -78,7 +78,8 @@ RSpec.describe RTerm::Addon::Serialize do
         mouse_tracking_mode: :button,
         sgr_mouse_mode: true,
         focus_event_mode: true,
-        bracketed_paste_mode: true
+        bracketed_paste_mode: true,
+        synchronized_output_mode: true
       )
     end
 
@@ -201,6 +202,7 @@ RSpec.describe RTerm::Addon::Serialize do
     it "restores buffer cells, modes, title, links, and images from a structured snapshot" do
       terminal.write("\e]2;Snapshot\a")
       terminal.write("\e[?7l")
+      terminal.write("\e[?2026h")
       terminal.write("\e]8;id=1;https://example.com\aLink\e]8;;\a ")
       terminal.write("\e[31mRed\e[0m")
       terminal.write("\ePqABC\e\\")
@@ -215,6 +217,7 @@ RSpec.describe RTerm::Addon::Serialize do
       expect(restored.cols).to eq(80)
       expect(restored.title).to eq("Snapshot")
       expect(restored.modes[:wraparound_mode]).to be false
+      expect(restored.modes[:synchronized_output_mode]).to be true
       expect(line.to_string).to include("Link Red")
       expect(line.get_cell(0).link).to eq({ params: "id=1", uri: "https://example.com" })
       expect(line.get_cell(5).fg_color_mode).to eq(:p16)

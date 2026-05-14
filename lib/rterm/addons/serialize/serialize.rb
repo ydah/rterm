@@ -352,6 +352,7 @@ module RTerm
           "@reverse_wraparound" => "reverse_wraparound_mode",
           "@sgr_mouse_mode" => "sgr_mouse_mode",
           "@sgr_pixels_mode" => "sgr_pixels_mode",
+          "@synchronized_output_mode" => "synchronized_output_mode",
           "@urxvt_mouse_mode" => "urxvt_mouse_mode",
           "@utf8_mouse_mode" => "utf8_mouse_mode",
           "@autowrap" => "wraparound_mode"
@@ -445,6 +446,7 @@ module RTerm
         result << serialize_mouse_modes(modes)
         result << "\e[?1004h" if modes[:focus_event_mode]
         result << "\e[?2004h" if modes[:bracketed_paste_mode]
+        result << "\e[?2026h" if modes[:synchronized_output_mode]
         result
       end
 

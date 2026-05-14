@@ -182,6 +182,7 @@ module RTerm
         @input_handler.on(:cursor_move) { |payload| emit(:cursor_move, payload) }
         @input_handler.on(:line_feed) { emit(:line_feed) }
         @input_handler.on(:data) { |data| emit(:data, data) }
+        @input_handler.on(:synchronized_output) { |payload| emit(:synchronized_output, payload) }
         @input_handler.on(:hyperlink) do |payload|
           osc_link_service.update(payload)
           emit(:hyperlink, payload)
@@ -198,7 +199,7 @@ module RTerm
           raw: raw.to_s
         }
         emit(:line_update, payload)
-        emit(:render, { start: 0, end: [@rows - 1, 0].max })
+        emit(:render, { start: 0, end: [@rows - 1, 0].max }) unless @input_handler.synchronized_output_mode
         emit(:screen_reader, payload) if @options.screen_reader_mode
         payload
       end

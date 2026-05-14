@@ -804,6 +804,16 @@ RSpec.describe RTerm::Common::InputHandler do
         expect(responses.last).to eq("\e[?7;2$y")
       end
 
+      it "reports synchronized output mode status" do
+        responses = []
+        handler.on(:data) { |data| responses << data }
+
+        parse("\e[?2026h")
+        parse("\e[?2026$p")
+
+        expect(responses.last).to eq("\e[?2026;1$y")
+      end
+
       it "reports unknown modes as unsupported" do
         responses = []
         handler.on(:data) { |data| responses << data }
@@ -1187,6 +1197,25 @@ RSpec.describe RTerm::Common::InputHandler do
         parse("\e[?2004h")
         parse("\e[?2004l")
         expect(handler.bracketed_paste_mode).to be false
+      end
+    end
+
+    describe "Synchronized output mode (2026)" do
+      it "enables and disables synchronized output mode" do
+        events = []
+        handler.on(:synchronized_output) { |payload| events << payload }
+
+        parse("\e[?2026h")
+        expect(handler.synchronized_output_mode).to be true
+        expect(handler.modes[:synchronized_output_mode]).to be true
+
+        parse("\e[?2026l")
+        expect(handler.synchronized_output_mode).to be false
+        expect(handler.modes[:synchronized_output_mode]).to be false
+        expect(events).to eq([
+          { active: true, mode: 2026 },
+          { active: false, mode: 2026 }
+        ])
       end
     end
 

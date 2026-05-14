@@ -309,6 +309,26 @@ RSpec.describe "Escape Sequence Integration" do
       term.write("\e[?2004l")
       expect(term.internal.input_handler.bracketed_paste_mode).to be false
     end
+
+    it "synchronized output mode suppresses write render events until reset" do
+      renders = []
+      events = []
+      term.on(:render) { |payload| renders << payload }
+      term.on(:synchronized_output) { |payload| events << payload }
+
+      term.write("\e[?2026h")
+      term.write("pending")
+      expect(term.modes[:synchronized_output_mode]).to be true
+      expect(renders).to be_empty
+
+      term.write("\e[?2026l")
+      expect(term.modes[:synchronized_output_mode]).to be false
+      expect(renders.last).to eq(start: 0, end: term.rows - 1)
+      expect(events).to eq([
+        { active: true, mode: 2026 },
+        { active: false, mode: 2026 }
+      ])
+    end
   end
 
   describe "save/restore cursor" do

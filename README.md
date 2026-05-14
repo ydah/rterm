@@ -203,6 +203,15 @@ colors = term.cell_colors(cell)
 cursor = term.cursor_info(active: false)
 ```
 
+Synchronized output mode:
+
+```ruby
+term.write("\e[?2026h")
+term.write("batch")
+puts term.modes[:synchronized_output_mode] # => true
+term.write("\e[?2026l")
+```
+
 Input surface:
 
 ```ruby
