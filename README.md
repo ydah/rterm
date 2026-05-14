@@ -186,6 +186,17 @@ puts screen.text
 puts screen.accessibility_tree[:children].first[:text]
 ```
 
+Raster renderer frame:
+
+```ruby
+raster = RTerm::Addon::RasterRenderer.new(cell_width: 8, cell_height: 16)
+term.load_addon(raster)
+term.write("hello")
+
+puts raster.frame[:width]
+File.write("terminal.ppm", raster.to_ppm)
+```
+
 Canvas renderer state:
 
 ```ruby
@@ -340,7 +351,7 @@ puts RTerm::ConPTY.backend_contract[:required]
 
 - Unix PTY: supported through the PTY backend.
 - Windows ConPTY: adapter API is available; native process handling is supplied by the host backend.
-- Rendering: headless screen tree rendering is included; native Canvas/DOM/GPU presentation is supplied by the host.
+- Rendering: headless screen tree and RGBA raster rendering are included; native Canvas/DOM/GPU presentation is supplied by the host.
 
 ## Documentation
 

@@ -6,14 +6,14 @@ Native renderer-specific responsibilities stay out of core:
 
 - Font loading and fallback selection.
 - Character cell measurement in a browser or native UI.
-- Native Canvas, DOM, GPU, or terminal widget drawing.
-- Cursor animation timing.
-- Pixel-level image decoding and scaling.
+- Native Canvas, DOM, GPU, or terminal widget presentation.
 - Accessibility presentation beyond emitted narration events.
 
 Use `RTerm::Services::CHAR_SIZE_SERVICE` to pass measured cell dimensions into integrations, and `Terminal#cell_colors` / `Terminal#cursor_info` to resolve renderer-facing policy from terminal options.
 
 Use `RTerm::Addon::ScreenRenderer` when a Ruby-side render tree is needed. It renders visible rows into headless elements, keeps a text snapshot, and exposes an accessibility tree that host integrations can present through their UI toolkit.
+
+Use `RTerm::Addon::RasterRenderer` when a Ruby-side pixel frame is needed. It renders cells into an RGBA buffer, advances cursor blink state, composites decoded Sixel images, and can export a PPM image for tooling.
 
 Renderer integrations can keep their host-side state in `RTerm::Addon::Canvas` or `RTerm::Addon::WebGL` with:
 

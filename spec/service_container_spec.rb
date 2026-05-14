@@ -35,12 +35,22 @@ RSpec.describe RTerm::ServiceContainer do
     expect(services.get(RTerm::Services::LOG_SERVICE).debug("ignored")).to be_nil
     expect(services.get(RTerm::Services::LOG_SERVICE).warn("kept")[:message]).to eq("kept")
     expect(services.get(RTerm::Services::CHAR_SIZE_SERVICE).measure(width: 8, height: 16)).to eq(
-      { width: 8.0, height: 16.0 }
+      { width: 8.0, height: 16.0, source: :measured }
     )
 
     terminal.write("\e]8;id=1;https://example.com\a")
     expect(services.get(RTerm::Services::OSC_LINK_SERVICE).active_link).to eq(
       { params: "id=1", uri: "https://example.com" }
     )
+  end
+
+  it "estimates character size from terminal options" do
+    service = RTerm::Services::CharSizeService.new
+
+    size = service.estimate_from_options(font_size: 20, line_height: 1.2, letter_spacing: 1)
+
+    expect(size).to eq(width: 13.0, height: 24.0, source: :estimated)
+    expect(service).to be_estimated
+    expect(service).to be_ready
   end
 end
