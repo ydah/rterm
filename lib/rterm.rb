@@ -57,6 +57,7 @@ require_relative "rterm/addons/ligatures/ligatures"
 require_relative "rterm/addons/unicode11/unicode11"
 require_relative "rterm/addons/unicode_graphemes/unicode_graphemes"
 require_relative "rterm/addons/web_fonts/web_fonts"
+require_relative "rterm/addons/webgl/webgl"
 require_relative "rterm/addons/web_links/web_links"
 
 module RTerm

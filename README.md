@@ -11,7 +11,7 @@ helpers; rendering stays in the host application.
 - OSC/DCS support including OSC 8 hyperlinks, OSC 52 clipboard policy hooks, Sixel, and iTerm2 image metadata
 - PTY integration for interactive shell processes, including cwd/env, stdin close, pause/resume, process groups, and exit lifecycle
 - Browser bridge protocol for WebSocket-based terminal apps with session resume, attach policies, rate limits, heartbeat timeouts, origin checks, and binary negotiation
-- Addons: Attach, Search, Serialize, Fit, Clipboard, Progress, Image, Ligatures, Unicode11, UnicodeGraphemes, WebFonts, WebLinks
+- Addons: Attach, Search, Serialize, Fit, Clipboard, Progress, Image, Ligatures, Unicode11, UnicodeGraphemes, WebFonts, WebGL, WebLinks
 
 ## Requirements
 
@@ -156,6 +156,18 @@ fonts.register_font(
 
 puts fonts.font_face_css
 fonts.relayout
+```
+
+WebGL renderer state:
+
+```ruby
+renderer = RTerm::Addon::WebGL.new
+term.load_addon(renderer)
+
+renderer.on_context_loss { |event| warn event[:reason] }
+term.refresh(0, term.rows - 1)
+puts renderer.last_render # => {:start=>0, :end=>23, :rows=>[0, ...]}
+renderer.clear_texture_atlas
 ```
 
 ## Terminal APIs

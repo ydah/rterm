@@ -791,6 +791,7 @@ module RTerm
     # Clears cached texture atlas resources (headless no-op).
     # @return [Boolean]
     def clear_texture_atlas
+      @terminal.emit(:texture_atlas_clear, { source: :terminal })
       true
     end
 
