@@ -8,9 +8,9 @@ Gem::Specification.new do |spec|
   spec.authors = ["Yudai Takada"]
   spec.email = ["t.yudai92@gmail.com"]
 
-  spec.summary = "Ruby terminal emulator — a Ruby port of xterm.js core logic"
+  spec.summary = "Headless terminal emulator library for Ruby"
   spec.description = "A headless terminal emulator library for Ruby, providing ANSI/VT escape sequence parsing, " \
-                     "terminal buffer management, and PTY integration. Based on xterm.js architecture."
+                     "terminal buffer management, PTY integration, and browser bridge helpers."
   spec.homepage = "https://github.com/ydah/rterm"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.2.0"
