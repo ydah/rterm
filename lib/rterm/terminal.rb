@@ -52,17 +52,85 @@ module RTerm
     class Decoration
       include Common::EventEmitter
 
+      class Element
+        attr_accessor :class_name, :text_content
+        attr_reader :attributes, :dataset, :style
+
+        def initialize(class_name: nil)
+          @class_name = class_name
+          @text_content = ""
+          @attributes = {}
+          @dataset = {}
+          @style = {}
+        end
+
+        def tag_name
+          "div"
+        end
+
+        def set_attribute(name, value)
+          @attributes[name.to_s] = value
+        end
+
+        def get_attribute(name)
+          @attributes[name.to_s]
+        end
+
+        def remove_attribute(name)
+          @attributes.delete(name.to_s)
+        end
+
+        def to_h
+          {
+            tag_name: tag_name,
+            class_name: @class_name,
+            text_content: @text_content,
+            attributes: @attributes.dup,
+            dataset: @dataset.dup,
+            style: @style.dup
+          }
+        end
+
+        alias className class_name
+        alias className= class_name=
+        alias textContent text_content
+        alias textContent= text_content=
+        alias setAttribute set_attribute
+        alias getAttribute get_attribute
+        alias removeAttribute remove_attribute
+      end
+
       def initialize(marker, options = {})
         @marker = marker
-        @options = options || {}
+        @options = normalize_options(options || {})
+        @public_options = build_public_options(@options)
+        @element = nil
+        @render_state = nil
         @disposed = false
       end
 
-      def element
-        nil
+      attr_reader :element, :marker
+
+      def render(viewport_start:, viewport_end:, cols:)
+        return nil if @disposed || @marker.disposed?
+
+        @render_state = build_render_state(
+          viewport_start: viewport_start,
+          viewport_end: viewport_end,
+          cols: cols
+        )
+        update_element(@render_state)
+        emit(:render, @element)
+        @element
       end
 
-      attr_reader :marker
+      def render_state
+        deep_dup(@render_state)
+      end
+
+      def element
+        @element
+      end
 
       def disposed?
         @disposed
@@ -75,6 +143,7 @@ module RTerm
         return if @disposed
 
         @disposed = true
+        @element&.dataset&.[]=("disposed", "true")
         emit(:dispose)
         true
       end
@@ -92,11 +161,134 @@ module RTerm
       end
 
       def options
-        return {} if @options.nil?
+        deep_dup(@public_options)
+      end
+
+      private
+
+      def build_render_state(viewport_start:, viewport_end:, cols:)
+        width = [@options[:width].to_i, 1].max
+        height = [@options[:height].to_i, 1].max
+        x = [@options[:x].to_i, 0].max
+        anchor = normalize_anchor(@options[:anchor])
+        column = anchor == :right ? cols.to_i - width - x : x
+        column = [[column, 0].max, [cols.to_i - 1, 0].max].min
+        row = @marker.line.to_i - viewport_start.to_i
+        visible = @marker.line.to_i.between?(viewport_start.to_i, viewport_end.to_i)
 
         {
-          overviewRulerOptions: @options[:overviewRulerOptions] || @options["overviewRulerOptions"]
-        }
+          marker_id: @marker.id,
+          line: @marker.line,
+          row: row,
+          x: column,
+          width: width,
+          height: height,
+          anchor: anchor,
+          layer: normalize_layer(@options[:layer]),
+          visible: visible,
+          overviewRulerOptions: deep_dup(@public_options[:overviewRulerOptions]),
+          backgroundColor: @options[:backgroundColor],
+          foregroundColor: @options[:foregroundColor]
+        }.compact
+      end
+
+      def update_element(state)
+        @element ||= Element.new(class_name: @options[:className])
+        @element.class_name = @options[:className] if @options.key?(:className)
+        @element.dataset["markerId"] = state[:marker_id].to_s
+        @element.dataset["line"] = state[:line].to_s
+        @element.dataset["row"] = state[:row].to_s
+        @element.dataset["x"] = state[:x].to_s
+        @element.dataset["visible"] = state[:visible].to_s
+        @element.style["display"] = state[:visible] ? "" : "none"
+        @element.style["left"] = "#{state[:x]}cell"
+        @element.style["top"] = "#{state[:row]}cell"
+        @element.style["width"] = "#{state[:width]}cell"
+        @element.style["height"] = "#{state[:height]}cell"
+        @element.style["zIndex"] = state[:layer] == :top ? "1" : "0"
+        @element.style["backgroundColor"] = state[:backgroundColor] if state[:backgroundColor]
+        @element.style["color"] = state[:foregroundColor] if state[:foregroundColor]
+      end
+
+      def build_public_options(options)
+        result = {}
+        result[:overviewRulerOptions] = deep_dup(options[:overviewRulerOptions]) if options.key?(:overviewRulerOptions)
+        result
+      end
+
+      def normalize_options(options)
+        options.to_h.each_with_object({}) do |(key, value), result|
+          result[normalize_option_key(key)] = normalize_option_value(key, value)
+        end
+      end
+
+      def normalize_option_key(key)
+        case key.to_s
+        when "overviewRulerOptions", "overview_ruler_options"
+          :overviewRulerOptions
+        when "backgroundColor", "background_color"
+          :backgroundColor
+        when "foregroundColor", "foreground_color"
+          :foregroundColor
+        when "className", "class_name"
+          :className
+        else
+          key.to_s.tr("-", "_").to_sym
+        end
+      end
+
+      def normalize_option_value(key, value)
+        normalized_key = normalize_option_key(key)
+        case normalized_key
+        when :overviewRulerOptions
+          normalize_overview_ruler_options(value)
+        when :anchor
+          normalize_anchor(value)
+        when :layer
+          normalize_layer(value)
+        else
+          deep_dup(value)
+        end
+      end
+
+      def normalize_overview_ruler_options(value)
+        return nil unless value.respond_to?(:to_h)
+
+        value.to_h.each_with_object({}) do |(key, item), result|
+          result[normalize_overview_ruler_key(key)] = deep_dup(item)
+        end
+      end
+
+      def normalize_overview_ruler_key(key)
+        case key.to_s
+        when "position"
+          :position
+        when "color"
+          :color
+        else
+          key.to_s.tr("-", "_").to_sym
+        end
+      end
+
+      def normalize_anchor(value)
+        anchor = value.to_s.empty? ? "left" : value.to_s
+        anchor == "right" ? :right : :left
+      end
+
+      def normalize_layer(value)
+        layer = value.to_s.empty? ? "bottom" : value.to_s
+        layer == "top" ? :top : :bottom
+      end
+
+      def deep_dup(value)
+        case value
+        when Hash
+          value.each_with_object({}) { |(key, item), result| result[key] = deep_dup(item) }
+        when Array
+          value.map { |item| deep_dup(item) }
+        else
+          value
+        end
       end
 
       alias onRender on_render
@@ -131,6 +323,10 @@ module RTerm
 
       @terminal.on(:scroll) do |position|
         on_terminal_scroll(position)
+      end
+
+      @terminal.on(:render) do |payload|
+        render_decorations(payload)
       end
 
       @terminal.buffer_set.on(:buffer_change) do |payload|
@@ -461,6 +657,7 @@ module RTerm
       decoration = Decoration.new(marker, normalized_options)
       @decorations << decoration
       decoration.on_dispose { @decorations.delete(decoration) }
+      marker.on_dispose { decoration.dispose unless decoration.disposed? }
       decoration
     end
 
@@ -1471,6 +1668,18 @@ module RTerm
     end
 
     private
+
+    def render_decorations(_payload = nil)
+      return if @decorations.empty?
+
+      buffer = @terminal.buffer_set.active
+      viewport_start = buffer.y_disp
+      viewport_end = viewport_start + rows - 1
+
+      @decorations.dup.each do |decoration|
+        decoration.render(viewport_start: viewport_start, viewport_end: viewport_end, cols: cols)
+      end
+    end
 
     def set_selection(selection)
       @selection = selection

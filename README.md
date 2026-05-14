@@ -162,6 +162,23 @@ colors = term.cell_colors(cell)
 cursor = term.cursor_info(active: false)
 ```
 
+Decorations:
+
+```ruby
+marker = term.register_marker
+decoration = term.register_decoration(
+  marker,
+  x: 2,
+  width: 8,
+  className: "highlight",
+  backgroundColor: "#334155",
+  overviewRulerOptions: { color: "#334155", position: "full" }
+)
+
+decoration.on_render { |element| puts element.dataset["row"] }
+term.refresh(0, term.rows - 1)
+```
+
 PTY:
 
 ```ruby

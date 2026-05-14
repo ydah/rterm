@@ -646,6 +646,80 @@ RSpec.describe "specification APIs" do
     expect(terminal.instance_variable_get(:@decorations)).not_to include(decoration)
   end
 
+  it "renders registered decorations into headless elements" do
+    terminal = RTerm::Terminal.new(cols: 10, rows: 3)
+    marker = terminal.registerMarker
+    rendered = []
+
+    decoration = terminal.registerDecoration(
+      marker,
+      x: 2,
+      width: 3,
+      height: 2,
+      layer: "top",
+      className: "line-highlight",
+      backgroundColor: "#112233",
+      foregroundColor: "#ffffff",
+      overviewRulerOptions: { color: "#112233", position: "full" }
+    )
+    decoration.onRender { |element| rendered << element }
+
+    terminal.refresh(0, 2)
+
+    element = decoration.element
+    expect(element).to be_a(RTerm::Terminal::Decoration::Element)
+    expect(rendered).to eq([element])
+    expect(element.tag_name).to eq("div")
+    expect(element.className).to eq("line-highlight")
+    expect(element.dataset).to include(
+      "markerId" => marker.id.to_s,
+      "line" => marker.line.to_s,
+      "row" => "0",
+      "x" => "2",
+      "visible" => "true"
+    )
+    expect(element.style).to include(
+      "left" => "2cell",
+      "top" => "0cell",
+      "width" => "3cell",
+      "height" => "2cell",
+      "zIndex" => "1",
+      "backgroundColor" => "#112233",
+      "color" => "#ffffff"
+    )
+    expect(decoration.render_state).to include(
+      marker_id: marker.id,
+      line: marker.line,
+      row: 0,
+      x: 2,
+      width: 3,
+      height: 2,
+      anchor: :left,
+      layer: :top,
+      visible: true,
+      overviewRulerOptions: { color: "#112233", position: "full" }
+    )
+  end
+
+  it "normalizes decoration placement and lifecycle" do
+    terminal = RTerm::Terminal.new(cols: 10, rows: 2)
+    marker = terminal.registerMarker
+    decoration = terminal.registerDecoration(marker, anchor: "right", x: 1, width: 2)
+
+    terminal.refresh(0, 1)
+    expect(decoration.render_state).to include(x: 7, visible: true)
+
+    marker.line = 5
+    terminal.refresh(0, 1)
+    expect(decoration.render_state).to include(row: 5, visible: false)
+    expect(decoration.element.style["display"]).to eq("none")
+
+    marker.dispose
+    expect(decoration).to be_disposed
+    expect(decoration.element.dataset["disposed"]).to eq("true")
+    expect(terminal.instance_variable_get(:@decorations)).not_to include(decoration)
+  end
+
   it "supports clearTextureAtlas as no-op API" do
     terminal = RTerm::Terminal.new
 
