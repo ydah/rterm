@@ -629,6 +629,29 @@ RSpec.describe "specification APIs" do
     expect(terminal.element.to_h[:children].first[:tag_name]).to eq("textarea")
   end
 
+  it "maintains a live region for screen reader output" do
+    terminal = RTerm::Terminal.new(screenReaderMode: true)
+    accessibility = []
+
+    terminal.onAccessibility { |payload| accessibility << payload }
+    terminal.open
+    terminal.write("hello")
+
+    expect(terminal.liveRegion).to be_a(RTerm::Terminal::LiveRegionElement)
+    expect(terminal.element.children).to include(terminal.liveRegion)
+    expect(terminal.liveRegion.getAttribute("aria-live")).to eq("polite")
+    expect(terminal.liveRegion.textContent).to eq("hello")
+    expect(terminal.accessibilitySnapshot).to include(
+      screen_reader_mode: true,
+      last_announcement: "hello"
+    )
+    expect(accessibility.last[:live_region][:text_content]).to eq("hello")
+
+    terminal.setOption("screenReaderMode", false)
+    expect(terminal.liveRegion).to be_nil
+    expect(terminal.element.children.map(&:tag_name)).to eq(["textarea"])
+  end
+
   it "keeps textarea focus state in sync" do
     terminal = RTerm::Terminal.new
     focus_payloads = []

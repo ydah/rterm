@@ -11,12 +11,16 @@ module RTerm
       DEFAULT_CAPABILITIES = {}.freeze
       RENDERER_TYPE = :renderer
 
-      attr_reader :renderer, :context
+      attr_reader :renderer, :context, :host, :shadow_root
 
       def initialize(options = {})
         @options = normalize_options(options)
         @renderer = @options[:renderer]
         @context = @options[:context]
+        @host = @options[:host]
+        @shadow_root = @options[:shadow_root]
+        @viewport = normalize_viewport(@options.fetch(:viewport, {}))
+        @scrollbar = normalize_scrollbar(@options.fetch(:scrollbar, {}))
         @capabilities = default_capabilities.merge(normalize_hash(@options.fetch(:capabilities, {})))
         @disposables = []
         @active = false
@@ -66,6 +70,10 @@ module RTerm
           type: renderer_type,
           context_lost: @context_lost,
           capabilities: capabilities,
+          host_attached: !@host.nil?,
+          shadow_root_attached: !@shadow_root.nil?,
+          viewport: viewport,
+          scrollbar: scrollbar,
           last_render: deep_dup(@last_render),
           last_resize: deep_dup(@last_resize),
           last_option_change: deep_dup(@last_option_change),
@@ -85,12 +93,64 @@ module RTerm
         @render_cache_clears
       end
 
+      def viewport
+        deep_dup(viewport_payload)
+      end
+
+      def scrollbar
+        deep_dup(@scrollbar)
+      end
+
       def attach_renderer(renderer, context: @context, capabilities: nil)
         @renderer = renderer
         @context = context
         @capabilities = @capabilities.merge(normalize_hash(capabilities)) if capabilities
         emit_change(:attach_renderer)
         state
+      end
+
+      def attach_host(host, shadow_root: nil, viewport: nil)
+        @host = host
+        @shadow_root = shadow_root unless shadow_root.nil?
+        @viewport = normalize_viewport(@viewport.merge(normalize_hash(viewport))) if viewport
+        payload = event_payload(:host_attach).merge(host: @host, shadow_root: @shadow_root, viewport: self.viewport)
+        emit(:host_attach, payload)
+        emit_terminal(renderer_event(:host_attach), payload)
+        emit_change(:host_attach)
+        state
+      end
+
+      def detach_host
+        return state unless @host || @shadow_root
+
+        @host = nil
+        @shadow_root = nil
+        payload = event_payload(:host_detach).merge(viewport: viewport)
+        emit(:host_detach, payload)
+        emit_terminal(renderer_event(:host_detach), payload)
+        emit_change(:host_detach)
+        state
+      end
+
+      def update_viewport(attributes = nil, **kwargs)
+        data = normalize_hash(attributes || {}).merge(normalize_hash(kwargs))
+        @viewport = normalize_viewport(@viewport.merge(data))
+        @last_resize = viewport_payload.slice(:cols, :rows)
+        payload = event_payload(:viewport).merge(viewport: viewport)
+        emit(:viewport, payload)
+        emit_terminal(renderer_event(:viewport), payload)
+        emit_change(:viewport)
+        viewport
+      end
+
+      def update_scrollbar(attributes = nil, **kwargs)
+        data = normalize_hash(attributes || {}).merge(normalize_hash(kwargs))
+        @scrollbar = normalize_scrollbar(@scrollbar.merge(data))
+        payload = event_payload(:scrollbar).merge(scrollbar: scrollbar)
+        emit(:scrollbar, payload)
+        emit_terminal(renderer_event(:scrollbar), payload)
+        emit_change(:scrollbar)
+        scrollbar
       end
 
       def lose_context(reason = nil)
@@ -135,6 +195,18 @@ module RTerm
         on(cache_event_name, &block)
       end
 
+      def on_host_attach(&block)
+        on(:host_attach, &block)
+      end
+
+      def on_viewport(&block)
+        on(:viewport, &block)
+      end
+
+      def on_scrollbar(&block)
+        on(:scrollbar, &block)
+      end
+
       def on_change(&block)
         on(:change, &block)
       end
@@ -143,9 +215,14 @@ module RTerm
       alias is_context_lost context_lost?
       alias isContextLost context_lost?
       alias rendererType renderer_type
+      alias shadowRoot shadow_root
       alias lastRender last_render
       alias lastResize last_resize
       alias renderCacheClears render_cache_clears
+      alias attachHost attach_host
+      alias detachHost detach_host
+      alias updateViewport update_viewport
+      alias updateScrollbar update_scrollbar
       alias attachRenderer attach_renderer
       alias loseContext lose_context
       alias restoreContext restore_context
@@ -153,6 +230,9 @@ module RTerm
       alias onContextLoss on_context_loss
       alias onContextRestore on_context_restore
       alias onRenderCacheClear on_render_cache_clear
+      alias onHostAttach on_host_attach
+      alias onViewport on_viewport
+      alias onScrollbar on_scrollbar
       alias onChange on_change
 
       private
@@ -171,6 +251,7 @@ module RTerm
 
       def handle_resize(payload)
         @last_resize = normalize_resize_payload(payload)
+        @viewport = normalize_viewport(@viewport.merge(@last_resize))
         emit(:resize, deep_dup(@last_resize))
         emit_change(:resize)
       end
@@ -210,10 +291,11 @@ module RTerm
       end
 
       def viewport_payload
-        {
+        measured = {
           cols: @terminal ? @terminal.cols.to_i : 0,
           rows: @terminal ? @terminal.rows.to_i : 0
         }
+        normalize_viewport(measured.merge(@viewport))
       end
 
       def event_payload(event, **extra)
@@ -268,6 +350,26 @@ module RTerm
           .gsub(/([A-Z]+)([A-Z][a-z])/, "\\1_\\2")
           .downcase
           .to_sym
+      end
+
+      def normalize_viewport(value)
+        normalize_numeric_hash(value, integer_keys: %i[cols rows width height scroll_top scroll_left])
+      end
+
+      def normalize_scrollbar(value)
+        normalize_numeric_hash(value, integer_keys: %i[width position size])
+      end
+
+      def normalize_numeric_hash(value, integer_keys:)
+        normalize_hash(value).each_with_object({}) do |(key, item), result|
+          result[key] = if integer_keys.include?(key)
+            item.to_i
+          elsif key == :device_pixel_ratio || key.to_s.end_with?("_scale")
+            item.to_f
+          else
+            deep_dup(item)
+          end
+        end
       end
 
       def deep_dup(value)

@@ -110,4 +110,43 @@ RSpec.describe RTerm::Addon::Canvas do
     expect(addon).not_to be_active
     expect(addon.lastRender).to be_nil
   end
+
+  it "tracks host, viewport, and scrollbar integration state" do
+    terminal = RTerm::Terminal.new(cols: 10, rows: 3)
+    addon = described_class.new
+    host = RTerm::Terminal::HostElement.new
+    shadow = RTerm::Terminal::HostElement.new(class_name: "shadow")
+    host_events = []
+    viewport_events = []
+    scrollbar_events = []
+
+    addon.onHostAttach { |payload| host_events << payload }
+    addon.onViewport { |payload| viewport_events << payload }
+    addon.onScrollbar { |payload| scrollbar_events << payload }
+    terminal.load_addon(addon)
+
+    state = addon.attachHost(host, shadow_root: shadow, viewport: { cellWidth: 9.5, cellHeight: 18 })
+    addon.updateViewport(pixelWidth: 950, pixelHeight: 360, devicePixelRatio: 2)
+    addon.updateScrollbar(visible: true, width: 12, position: 4, size: 20)
+    terminal.resize(12, 4)
+
+    expect(state).to include(host_attached: true, shadow_root_attached: true)
+    expect(addon.host).to equal(host)
+    expect(addon.shadowRoot).to equal(shadow)
+    expect(addon.viewport).to include(
+      cols: 12,
+      rows: 4,
+      cell_width: 9.5,
+      cell_height: 18,
+      pixel_width: 950,
+      pixel_height: 360,
+      device_pixel_ratio: 2.0
+    )
+    expect(addon.scrollbar).to eq(visible: true, width: 12, position: 4, size: 20)
+    expect(host_events.last).to include(event: :host_attach, host: host, shadow_root: shadow)
+    expect(viewport_events.last[:viewport]).to include(pixel_width: 950)
+    expect(scrollbar_events.last[:scrollbar]).to include(width: 12)
+
+    expect(addon.detachHost).to include(host_attached: false, shadow_root_attached: false)
+  end
 end

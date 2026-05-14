@@ -63,6 +63,32 @@ module RTerm
       alias removeAttribute remove_attribute
     end
 
+    class LiveRegionElement < HostElement
+      attr_reader :entries
+
+      def initialize(label: "Terminal output")
+        super(tag_name: "div", class_name: "rterm-screen-reader")
+        @entries = []
+        set_attribute("role", "status")
+        set_attribute("aria-live", "polite")
+        set_attribute("aria-atomic", "true")
+        set_attribute("aria-label", label)
+      end
+
+      def update(payload)
+        data = payload.to_h
+        @text_content = data[:text].to_s
+        @dataset["row"] = data[:row].to_s if data.key?(:row)
+        @entries << data.dup
+        @entries.shift while @entries.length > 20
+        self
+      end
+
+      def to_h
+        super.merge(entries: @entries.map(&:dup))
+      end
+    end
+
     class TextAreaElement
       include Common::EventEmitter
 

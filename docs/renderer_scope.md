@@ -12,3 +12,13 @@ Renderer-specific responsibilities stay out of core:
 - Accessibility presentation beyond emitted narration events.
 
 Use `RTerm::Services::CHAR_SIZE_SERVICE` to pass measured cell dimensions into integrations, and `Terminal#cell_colors` / `Terminal#cursor_info` to resolve renderer-facing policy from terminal options.
+
+Renderer integrations can keep their host-side state in `RTerm::Addon::Canvas` or `RTerm::Addon::WebGL` with:
+
+- `attach_host` for the external element or view object.
+- `update_viewport` for cell, pixel, and device-pixel-ratio measurements.
+- `update_scrollbar` for externally rendered scrollbar state.
+
+Image integrations can use `RTerm::Addon::Image#register_decoder` and `#render_all` to delegate decoding and drawing to host code while keeping protocol metadata in the terminal core.
+
+When `screen_reader_mode` is enabled, `Terminal#open` creates a headless live-region element and emits `:accessibility` snapshots. Browser or native UI layers are still responsible for presenting that element to their accessibility tree.

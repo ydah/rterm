@@ -8,7 +8,11 @@ module RTerm
     class Image < Base
       include Common::EventEmitter
 
-      def initialize
+      def initialize(decoder: nil, renderer: nil)
+        @decoder = decoder
+        @renderer = renderer
+        @decoders = {}
+        @render_requests = []
         @disposables = []
       end
 
@@ -63,12 +67,74 @@ module RTerm
         removed
       end
 
+      def register_decoder(protocol, decoder = nil, &block)
+        callable = block || decoder
+        raise ArgumentError, "decoder must respond to call" unless callable.respond_to?(:call)
+
+        key = protocol.to_sym
+        @decoders[key] = callable
+        Common::Disposable.new { @decoders.delete(key) if @decoders[key].equal?(callable) }
+      end
+
+      def decode(image)
+        ensure_active!
+
+        payload = normalize_image(image)
+        decoder = @decoders[payload[:protocol]] || @decoder
+        return nil unless decoder.respond_to?(:call)
+
+        result = decoder.call(payload)
+        event = {
+          image: payload,
+          protocol: payload[:protocol],
+          result: result
+        }
+        emit(:decode, event)
+        event
+      end
+
+      def render(image, target: nil, decode: true)
+        ensure_active!
+
+        payload = normalize_image(image)
+        decoded = decode ? self.decode(payload) : nil
+        request = {
+          image: payload,
+          protocol: payload[:protocol],
+          target: target,
+          decoded: decoded&.fetch(:result, nil)
+        }.compact
+
+        renderer = @renderer
+        request[:result] = renderer.call(request) if renderer.respond_to?(:call)
+        @render_requests << deep_dup(request)
+        emit(:render_request, request)
+        request
+      end
+
+      def render_all(protocol: nil, buffer: nil, target: nil)
+        images.select { |image| matches_filter?(image, protocol: protocol, buffer: buffer) }
+              .map { |image| render(image, target: target) }
+      end
+
+      def render_requests
+        @render_requests.map { |request| deep_dup(request) }
+      end
+
       def on_image(&block)
         on(:image, &block)
       end
 
       def on_clear(&block)
         on(:clear, &block)
+      end
+
+      def on_decode(&block)
+        on(:decode, &block)
+      end
+
+      def on_render_request(&block)
+        on(:render_request, &block)
       end
 
       def dispose
@@ -79,7 +145,12 @@ module RTerm
 
       alias onImage on_image
       alias onClear on_clear
+      alias onDecode on_decode
+      alias onRenderRequest on_render_request
       alias byProtocol by_protocol
+      alias registerDecoder register_decoder
+      alias renderAll render_all
+      alias renderRequests render_requests
 
       private
 
@@ -94,6 +165,28 @@ module RTerm
         return false if buffer && placement[:buffer] != buffer.to_sym
 
         true
+      end
+
+      def normalize_image(image)
+        image.to_h.each_with_object({}) do |(key, value), result|
+          normalized_key = key.to_s
+                              .tr("-", "_")
+                              .gsub(/([a-z\d])([A-Z])/, "\\1_\\2")
+                              .downcase
+                              .to_sym
+          result[normalized_key] = deep_dup(value)
+        end
+      end
+
+      def deep_dup(value)
+        case value
+        when Hash
+          value.each_with_object({}) { |(key, item), result| result[key] = deep_dup(item) }
+        when Array
+          value.map { |item| deep_dup(item) }
+        else
+          value
+        end
       end
     end
   end

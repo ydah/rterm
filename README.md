@@ -120,7 +120,10 @@ images = RTerm::Addon::Image.new
 term.load_addon(images)
 
 images.on_image { |image| puts image[:protocol] }
+images.register_decoder(:sixel) { |image| { bytes: image[:data].bytesize } }
+images.on_render_request { |request| puts request[:protocol] }
 term.write("\ePqABCDEF\e\\")
+images.render_all(protocol: :sixel, target: :canvas)
 ```
 
 Ligature ranges:
@@ -165,6 +168,8 @@ renderer = RTerm::Addon::WebGL.new
 term.load_addon(renderer)
 
 renderer.on_context_loss { |event| warn event[:reason] }
+renderer.attach_host(:canvas, viewport: { cellWidth: 9, cellHeight: 18 })
+renderer.update_scrollbar(visible: true, width: 12)
 term.refresh(0, term.rows - 1)
 puts renderer.last_render # => {:start=>0, :end=>23, :rows=>[0, ...]}
 renderer.clear_texture_atlas
@@ -227,6 +232,7 @@ Input surface:
 ```ruby
 term.open
 term.on_textarea_input { |event| puts event[:data] }
+term.on_accessibility { |event| puts event[:last_announcement] }
 term.textarea.input("ls\r")
 term.textarea.composition_start("k")
 term.textarea.composition_update("ka")
@@ -310,10 +316,18 @@ More examples:
 - PTY commands run with the host process permissions; do not connect untrusted browser input directly to a privileged shell.
 - Validate URI schemes in the host app before activating OSC 8 hyperlinks.
 
+ConPTY backend adapter:
+
+```ruby
+RTerm::ConPTY.configure_backend(lambda { |**options| MyConPTYBackend.new(**options) })
+conpty = RTerm::ConPTY.new(command: "cmd.exe", cols: 80, rows: 24)
+conpty.on_data { |data| term.write(data) }
+```
+
 ## Platform Status
 
 - Unix PTY: supported through the PTY backend.
-- Windows ConPTY: planned, but not implemented yet.
+- Windows ConPTY: adapter API is available; native process handling is supplied by the host backend.
 - Rendering: intentionally out of scope; rterm is a headless core.
 
 ## Documentation

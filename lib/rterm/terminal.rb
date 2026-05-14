@@ -11,6 +11,7 @@ module RTerm
     URL_TRAILING_PUNCTUATION = ".,;:!?"
     LOCALIZABLE_STRINGS = {
       "promptLabel" => "Terminal input",
+      "screenReaderLabel" => "Terminal output",
       "tooMuchOutput" => "Terminal output is too large to announce"
     }.freeze
 
@@ -314,6 +315,7 @@ module RTerm
       @selection = nil
       @container = nil
       @textarea = nil
+      @live_region = nil
       @composition = { active: false, data: "" }
       @custom_key_event_handler = nil
       @custom_wheel_event_handler = nil
@@ -336,6 +338,14 @@ module RTerm
 
       @terminal.on(:render) do |payload|
         render_decorations(payload)
+      end
+
+      @terminal.on(:screen_reader) do |payload|
+        update_live_region(payload)
+      end
+
+      @terminal.on(:option_change) do |payload|
+        handle_terminal_option_change(payload)
       end
 
       @terminal.buffer_set.on(:buffer_change) do |payload|
@@ -362,6 +372,13 @@ module RTerm
     def textarea
       @textarea
     end
+
+    # Headless live region used when screen reader narration is enabled.
+    def live_region
+      @live_region
+    end
+
+    alias liveRegion live_region
 
     # Localizable strings.
     # @return [Hash]
@@ -825,7 +842,9 @@ module RTerm
     # @param value [Object]
     # @return [TerminalOptions]
     def set_option(name, value)
-      @terminal.set_option(name, value)
+      result = @terminal.set_option(name, value)
+      sync_accessibility_surface if normalize_public_option_name(name) == :screen_reader_mode
+      result
     end
 
     # CamelCase alias.
@@ -887,6 +906,18 @@ module RTerm
       }
     end
 
+    def accessibility_snapshot
+      {
+        screen_reader_mode: options.screen_reader_mode,
+        focused: focused?,
+        textarea: @textarea&.to_h,
+        live_region: @live_region&.to_h,
+        last_announcement: @live_region&.text_content
+      }
+    end
+
+    alias accessibilitySnapshot accessibility_snapshot
+
     # --- Buffer Operations ---
 
     # Clears the terminal buffer.
@@ -912,6 +943,17 @@ module RTerm
     def on_textarea_input(&block)
       on(:textarea_input, &block)
     end
+
+    def on_screen_reader(&block)
+      on(:screen_reader, &block)
+    end
+
+    def on_accessibility(&block)
+      on(:accessibility, &block)
+    end
+
+    alias onScreenReader on_screen_reader
+    alias onAccessibility on_accessibility
 
     def on_composition_start(&block)
       on(:composition_start, &block)
@@ -1162,9 +1204,10 @@ module RTerm
       @container = container || HostElement.new
       @textarea = TextAreaElement.new(self, parent: @container, label: strings["promptLabel"])
       attach_textarea(@container, @textarea)
+      sync_accessibility_surface
       @focused = false if focus == false
       @textarea.set_focused(@focused)
-      @terminal.emit(:open, { element: @container, textarea: @textarea })
+      @terminal.emit(:open, { element: @container, textarea: @textarea, live_region: @live_region })
       focus() if focus
       true
     end
@@ -1774,6 +1817,58 @@ module RTerm
       elsif container.respond_to?(:appendChild)
         container.appendChild(textarea)
       end
+    end
+
+    def attach_live_region(container, live_region)
+      return unless container && live_region
+
+      if container.respond_to?(:append_child)
+        container.append_child(live_region)
+      elsif container.respond_to?(:appendChild)
+        container.appendChild(live_region)
+      end
+    end
+
+    def detach_live_region
+      return unless @container && @live_region
+
+      if @container.respond_to?(:remove_child)
+        @container.remove_child(@live_region)
+      elsif @container.respond_to?(:removeChild)
+        @container.removeChild(@live_region)
+      end
+      @live_region = nil
+    end
+
+    def sync_accessibility_surface
+      if options.screen_reader_mode
+        return unless @container
+
+        @live_region ||= LiveRegionElement.new(label: strings["screenReaderLabel"])
+        attach_live_region(@container, @live_region)
+      else
+        detach_live_region
+      end
+    end
+
+    def update_live_region(payload)
+      sync_accessibility_surface
+      @live_region&.update(payload)
+      @terminal.emit(:accessibility, accessibility_snapshot)
+    end
+
+    def handle_terminal_option_change(payload)
+      name = payload[:name] || payload["name"]
+      sync_accessibility_surface if name&.to_sym == :screen_reader_mode
+    end
+
+    def normalize_public_option_name(name)
+      name.to_s
+          .tr("-", "_")
+          .gsub(/([a-z\d])([A-Z])/, "\\1_\\2")
+          .gsub(/([A-Z]+)([A-Z][a-z])/, "\\1_\\2")
+          .downcase
+          .to_sym
     end
 
     def input_surface_payload(data, was_user_input:)
