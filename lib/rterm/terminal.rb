@@ -918,6 +918,35 @@ module RTerm
 
     alias accessibilitySnapshot accessibility_snapshot
 
+    def accessibility_tree
+      active = buffer.active
+      rows = (0...self.rows).map do |row|
+        line = active.get_line(active.y_disp + row)
+        {
+          role: "row",
+          row: row,
+          absolute_row: active.y_disp + row,
+          text: line ? line.to_string(trim_right: false) : ""
+        }
+      end
+
+      {
+        role: "terminal",
+        focused: focused?,
+        cols: cols,
+        rows: self.rows,
+        cursor: {
+          row: active.y,
+          col: active.x,
+          absolute_row: active.y_base + active.y
+        },
+        live_region: @live_region&.to_h,
+        children: rows
+      }
+    end
+
+    alias accessibilityTree accessibility_tree
+
     # --- Buffer Operations ---
 
     # Clears the terminal buffer.

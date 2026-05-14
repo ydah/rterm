@@ -175,6 +175,17 @@ puts renderer.last_render # => {:start=>0, :end=>23, :rows=>[0, ...]}
 renderer.clear_texture_atlas
 ```
 
+Screen renderer tree:
+
+```ruby
+screen = RTerm::Addon::ScreenRenderer.new
+term.load_addon(screen)
+term.write("hello")
+
+puts screen.text
+puts screen.accessibility_tree[:children].first[:text]
+```
+
 Canvas renderer state:
 
 ```ruby
@@ -328,7 +339,7 @@ conpty.on_data { |data| term.write(data) }
 
 - Unix PTY: supported through the PTY backend.
 - Windows ConPTY: adapter API is available; native process handling is supplied by the host backend.
-- Rendering: intentionally out of scope; rterm is a headless core.
+- Rendering: headless screen tree rendering is included; native Canvas/DOM/GPU presentation is supplied by the host.
 
 ## Documentation
 
