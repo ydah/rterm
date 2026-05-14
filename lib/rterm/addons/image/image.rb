@@ -2,6 +2,8 @@
 
 require_relative "../base"
 require_relative "../../common/event_emitter"
+require_relative "../../common/image/iterm2_decoder"
+require_relative "../../common/image/sixel_decoder"
 
 module RTerm
   module Addon
@@ -11,7 +13,7 @@ module RTerm
       def initialize(decoder: nil, renderer: nil)
         @decoder = decoder
         @renderer = renderer
-        @decoders = {}
+        @decoders = default_decoders
         @render_requests = []
         @disposables = []
       end
@@ -156,6 +158,13 @@ module RTerm
 
       def ensure_active!
         raise RuntimeError, "Image addon is not active" unless @terminal
+      end
+
+      def default_decoders
+        {
+          sixel: ->(image) { Common::SixelDecoder.decode(image) },
+          iterm2: ->(image) { Common::Iterm2Decoder.decode(image) }
+        }
       end
 
       def matches_filter?(image, protocol:, buffer:)

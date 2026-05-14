@@ -10,7 +10,7 @@ OSC 8 links are stored as cell metadata and emitted through events. Treat link a
 
 ## Images
 
-Sixel and iTerm2 image payloads are parsed and tracked as terminal metadata. Rendering layers should enforce size, memory, and MIME policies before decoding or displaying image data.
+Sixel and iTerm2 image payloads are parsed and can be decoded through the bundled image decoders. Rendering layers should still enforce size, memory, and MIME policies before displaying image data.
 
 ## PTY Spawn
 

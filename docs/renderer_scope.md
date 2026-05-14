@@ -21,6 +21,6 @@ Renderer integrations can keep their host-side state in `RTerm::Addon::Canvas` o
 - `update_viewport` for cell, pixel, and device-pixel-ratio measurements.
 - `update_scrollbar` for externally rendered scrollbar state.
 
-Image integrations can use `RTerm::Addon::Image#register_decoder` and `#render_all` to delegate decoding and drawing to host code while keeping protocol metadata in the terminal core.
+Image integrations can use the bundled Sixel and iTerm2 decoders, or `RTerm::Addon::Image#register_decoder` and `#render_all` to override decoding and delegate drawing to host code while keeping protocol metadata in the terminal core.
 
 When `screen_reader_mode` is enabled, `Terminal#open` creates a headless live-region element and emits `:accessibility` snapshots. Browser or native UI layers are still responsible for presenting that element to their accessibility tree.

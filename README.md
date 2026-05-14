@@ -120,9 +120,9 @@ images = RTerm::Addon::Image.new
 term.load_addon(images)
 
 images.on_image { |image| puts image[:protocol] }
-images.register_decoder(:sixel) { |image| { bytes: image[:data].bytesize } }
 images.on_render_request { |request| puts request[:protocol] }
 term.write("\ePqABCDEF\e\\")
+puts images.decode(images.by_protocol(:sixel).first)[:result][:format]
 images.render_all(protocol: :sixel, target: :canvas)
 ```
 

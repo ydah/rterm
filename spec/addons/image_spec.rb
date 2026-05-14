@@ -87,6 +87,18 @@ RSpec.describe RTerm::Addon::Image do
     expect(addon_with_renderer.renderRequests.last).to include(protocol: :sixel, result: :queued)
   end
 
+  it "uses bundled decoders by default" do
+    terminal.write("\ePqA\e\\")
+    terminal.write("\e]1337;File=name=test.png;inline=1:UE5H\a")
+
+    sixel = addon.decode(addon.by_protocol(:sixel).first)
+    iterm2 = addon.decode(addon.by_protocol(:iterm2).first)
+
+    expect(sixel[:result]).to include(protocol: :sixel, format: :indexed_rgba)
+    expect(sixel[:result][:pixels][1][0]).to eq(1)
+    expect(iterm2[:result]).to include(protocol: :iterm2, bytes: "PNG", byte_size: 3)
+  end
+
   it "renders all images with filters" do
     requests = []
     addon_with_renderer = described_class.new(renderer: ->(request) {
