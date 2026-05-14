@@ -6,6 +6,31 @@ module RTerm
     class UnsupportedPlatformError < StandardError; end
     class BackendUnavailableError < StandardError; end
 
+    REQUIRED_BACKEND_METHODS = %i[
+      write
+      on_data
+      on_exit
+      resize
+      close
+      wait_for_exit
+      alive?
+    ].freeze
+    OPTIONAL_BACKEND_METHODS = %i[
+      read
+      close_stdin
+      pause
+      resume
+      paused?
+      kill
+      closed?
+      pid
+      exit_status
+      exit_signal
+      process_group_id
+      process_group_enabled?
+      process_group_fallback_reason
+    ].freeze
+
     class << self
       attr_accessor :backend_factory
     end
@@ -26,11 +51,18 @@ module RTerm
       self.backend_factory = block || factory
     end
 
+    def self.backend_contract
+      {
+        required: REQUIRED_BACKEND_METHODS,
+        optional: OPTIONAL_BACKEND_METHODS
+      }
+    end
+
     def initialize(*positional, backend: nil, backend_factory: nil, **options)
       raise ArgumentError, "positional arguments are not supported" unless positional.empty?
 
       @options = options.dup
-      @backend = backend || build_backend(backend_factory)
+      @backend = validate_backend!(backend || build_backend(backend_factory))
     end
 
     def write(data)
@@ -138,6 +170,13 @@ module RTerm
       end
 
       callable.call(**@options)
+    end
+
+    def validate_backend!(candidate)
+      missing = REQUIRED_BACKEND_METHODS.reject { |method_name| candidate.respond_to?(method_name) }
+      return candidate if missing.empty?
+
+      raise BackendUnavailableError, "RTerm::ConPTY backend is missing required methods: #{missing.join(', ')}"
     end
   end
 end

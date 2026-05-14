@@ -333,6 +333,7 @@ ConPTY backend adapter:
 RTerm::ConPTY.configure_backend(lambda { |**options| MyConPTYBackend.new(**options) })
 conpty = RTerm::ConPTY.new(command: "cmd.exe", cols: 80, rows: 24)
 conpty.on_data { |data| term.write(data) }
+puts RTerm::ConPTY.backend_contract[:required]
 ```
 
 ## Platform Status

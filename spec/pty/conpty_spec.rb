@@ -83,6 +83,30 @@ RSpec.describe RTerm::ConPTY do
       def write(_data)
         true
       end
+
+      def on_data
+        RTerm::Common::Disposable.new {}
+      end
+
+      def on_exit
+        RTerm::Common::Disposable.new {}
+      end
+
+      def resize(_cols, _rows)
+        true
+      end
+
+      def close(timeout: 1.0)
+        timeout
+      end
+
+      def wait_for_exit(_timeout = nil)
+        0
+      end
+
+      def alive?
+        true
+      end
     end.new
     received_options = nil
 
@@ -95,6 +119,21 @@ RSpec.describe RTerm::ConPTY do
     expect(conpty.backend).to equal(backend)
     expect(conpty.options).to include(command: "cmd.exe", cols: 120)
     expect(received_options).to include(command: "cmd.exe", cols: 120)
+  end
+
+  it "describes and validates the backend contract" do
+    expect(described_class.backend_contract[:required]).to include(
+      :write,
+      :on_data,
+      :on_exit,
+      :resize,
+      :close,
+      :wait_for_exit,
+      :alive?
+    )
+
+    expect { described_class.new(command: "cmd.exe", backend: Object.new) }
+      .to raise_error(RTerm::ConPTY::BackendUnavailableError, /missing required methods/)
   end
 
   it "reports backend availability" do
