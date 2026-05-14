@@ -607,11 +607,95 @@ RSpec.describe "specification APIs" do
   it "returns terminal element and textarea properties" do
     terminal = RTerm::Terminal.new
     container = Object.new
+    open_events = []
 
+    terminal.onOpen { |payload| open_events << payload }
     terminal.open(container)
 
     expect(terminal.element).to equal(container)
-    expect(terminal.textarea).to be_nil
+    expect(terminal.textarea).to be_a(RTerm::Terminal::TextAreaElement)
+    expect(terminal.textarea.parent).to equal(container)
+    expect(terminal.textarea.getAttribute("aria-label")).to eq("Terminal input")
+    expect(open_events.last).to include(element: container, textarea: terminal.textarea)
+  end
+
+  it "creates a headless host element when opened without a container" do
+    terminal = RTerm::Terminal.new
+
+    terminal.open
+
+    expect(terminal.element).to be_a(RTerm::Terminal::HostElement)
+    expect(terminal.element.children).to include(terminal.textarea)
+    expect(terminal.element.to_h[:children].first[:tag_name]).to eq("textarea")
+  end
+
+  it "keeps textarea focus state in sync" do
+    terminal = RTerm::Terminal.new
+    focus_payloads = []
+    blur_payloads = []
+
+    terminal.open
+    terminal.onFocus { |payload| focus_payloads << payload }
+    terminal.onBlur { |payload| blur_payloads << payload }
+
+    terminal.focus
+    expect(terminal).to be_focused
+    expect(terminal.textarea).to be_focused
+    expect(focus_payloads.last).to include(textarea: terminal.textarea)
+
+    terminal.textarea.blur
+    expect(terminal).not_to be_focused
+    expect(terminal.textarea).not_to be_focused
+    expect(blur_payloads.last).to include(textarea: terminal.textarea)
+  end
+
+  it "bridges textarea input and paste events" do
+    terminal = RTerm::Terminal.new
+    data = []
+    input_payloads = []
+    textarea_inputs = []
+
+    terminal.open
+    terminal.onData { |payload| data << payload }
+    terminal.onTextareaInput { |payload| input_payloads << payload }
+    terminal.textarea.on(:input) { |payload| textarea_inputs << payload }
+
+    expect(terminal.textarea.input("ls\r")).to eq("ls\r")
+    expect(terminal.textarea.value).to eq("ls\r")
+    expect(data).to eq(["ls\r"])
+    expect(input_payloads.last).to include(data: "ls\r", textarea: terminal.textarea)
+    expect(textarea_inputs.last).to include(data: "ls\r", value: "ls\r")
+
+    terminal.write("\e[?2004h")
+    expect(terminal.textarea.paste("hello\n")).to eq("\e[200~hello\n\e[201~")
+    expect(terminal.textarea.value).to eq("hello\n")
+    expect(data.last).to eq("\e[200~hello\n\e[201~")
+  end
+
+  it "tracks composition events and commits text input" do
+    terminal = RTerm::Terminal.new
+    data = []
+    starts = []
+    updates = []
+    ends = []
+
+    terminal.open
+    terminal.onData { |payload| data << payload }
+    terminal.onCompositionStart { |payload| starts << payload }
+    terminal.onCompositionUpdate { |payload| updates << payload }
+    terminal.onCompositionEnd { |payload| ends << payload }
+
+    terminal.textarea.compositionStart("k")
+    terminal.textarea.compositionUpdate("ka")
+    payload = terminal.textarea.compositionEnd("か")
+
+    expect(payload).to include(event: :composition_end, data: "か", committed: true)
+    expect(starts.last).to include(event: :composition_start, data: "k", active: true)
+    expect(updates.last).to include(event: :composition_update, data: "ka", active: true)
+    expect(ends.last).to include(event: :composition_end, data: "か", active: false, committed: true)
+    expect(terminal.compositionState).to eq(active: false, data: "か")
+    expect(terminal.textarea).not_to be_composing
+    expect(data.last).to eq("か")
   end
 
   it "supports registerLinkProvider alias" do

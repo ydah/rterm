@@ -203,6 +203,17 @@ colors = term.cell_colors(cell)
 cursor = term.cursor_info(active: false)
 ```
 
+Input surface:
+
+```ruby
+term.open
+term.on_textarea_input { |event| puts event[:data] }
+term.textarea.input("ls\r")
+term.textarea.composition_start("k")
+term.textarea.composition_update("ka")
+term.textarea.composition_end("ka")
+```
+
 Decorations:
 
 ```ruby

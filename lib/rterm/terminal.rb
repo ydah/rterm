@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "headless/headless_terminal"
+require_relative "terminal/input_surface"
 
 module RTerm
   # Main public API for the terminal emulator.
@@ -305,7 +306,9 @@ module RTerm
       @disposed = false
       @addons = []
       @selection = nil
+      @container = nil
       @textarea = nil
+      @composition = { active: false, data: "" }
       @custom_key_event_handler = nil
       @custom_wheel_event_handler = nil
       @custom_mouse_event_handler = nil
@@ -422,13 +425,16 @@ module RTerm
       was_user_input = normalize_was_user_input(was_user_input, kwargs)
       return if options.disable_stdin
 
+      payload = data.to_s
       if was_user_input
         scroll_to_bottom if options.scroll_on_user_input
         clear_selection
       end
 
-      @terminal.emit(:data, data)
-      data
+      @textarea&.set_value(payload)
+      @terminal.emit(:textarea_input, input_surface_payload(payload, was_user_input: was_user_input)) if @textarea
+      @terminal.emit(:data, payload)
+      payload
     end
 
     # Simulates binary user input for protocols that bypass UTF-8 text paths.
@@ -447,10 +453,45 @@ module RTerm
     # @param data [String] pasted text
     # @return [String, nil] emitted payload
     def paste(data)
-      payload = data.to_s
+      text = data.to_s
+      payload = text
       payload = "\e[200~#{payload}\e[201~" if modes[:bracketed_paste_mode]
-      input(payload)
+      result = input(payload)
+      @textarea&.set_value(text) if result
+      result
     end
+
+    def composition_start(data = nil)
+      update_composition(data.to_s, active: true)
+      payload = composition_payload(:composition_start, @composition[:data])
+      @terminal.emit(:composition_start, payload)
+      payload
+    end
+
+    def composition_update(data)
+      update_composition(data.to_s, active: true)
+      payload = composition_payload(:composition_update, @composition[:data])
+      @terminal.emit(:composition_update, payload)
+      payload
+    end
+
+    def composition_end(data = nil, commit: true)
+      text = data.nil? ? @composition[:data].to_s : data.to_s
+      update_composition(text, active: false)
+      payload = composition_payload(:composition_end, text, committed: commit)
+      @terminal.emit(:composition_end, payload)
+      input(text) if commit && !text.empty?
+      payload
+    end
+
+    def composition_state
+      @composition.dup
+    end
+
+    alias compositionStart composition_start
+    alias compositionUpdate composition_update
+    alias compositionEnd composition_end
+    alias compositionState composition_state
 
     # Encodes and emits a high-level key event as terminal input.
     # @param key [Symbol, String]
@@ -499,6 +540,30 @@ module RTerm
     # @return [String, nil]
     def onData(&block)
       on_data(&block)
+    end
+
+    def onOpen(&block)
+      on_open(&block)
+    end
+
+    def onTextareaInput(&block)
+      on_textarea_input(&block)
+    end
+
+    def onTextAreaInput(&block)
+      on_textarea_input(&block)
+    end
+
+    def onCompositionStart(&block)
+      on_composition_start(&block)
+    end
+
+    def onCompositionUpdate(&block)
+      on_composition_update(&block)
+    end
+
+    def onCompositionEnd(&block)
+      on_composition_end(&block)
     end
 
     # CamelCase alias.
@@ -834,6 +899,26 @@ module RTerm
       on(:data, &block)
     end
 
+    def on_open(&block)
+      on(:open, &block)
+    end
+
+    def on_textarea_input(&block)
+      on(:textarea_input, &block)
+    end
+
+    def on_composition_start(&block)
+      on(:composition_start, &block)
+    end
+
+    def on_composition_update(&block)
+      on(:composition_update, &block)
+    end
+
+    def on_composition_end(&block)
+      on(:composition_end, &block)
+    end
+
     # CamelCase alias.
     # @param block [Proc]
     # @return [Common::Disposable]
@@ -1066,19 +1151,23 @@ module RTerm
       @terminal.scroll_to_cursor
     end
 
-    # Opens terminal on a host element (no-op for headless runtime).
-    def open(_container = nil, focus = false)
-      @container = _container
-      @textarea = nil
+    # Opens terminal on a host element.
+    def open(container = nil, focus = false)
+      @container = container || HostElement.new
+      @textarea = TextAreaElement.new(self, parent: @container, label: strings["promptLabel"])
+      attach_textarea(@container, @textarea)
       @focused = false if focus == false
+      @textarea.set_focused(@focused)
+      @terminal.emit(:open, { element: @container, textarea: @textarea })
       focus() if focus
       true
     end
 
-    # Focuses the terminal (no-op for headless runtime).
+    # Focuses the terminal input surface.
     def focus
       @focused = true
-      @terminal.emit(:focus)
+      @textarea&.set_focused(true)
+      @terminal.emit(:focus, { element: @container, textarea: @textarea })
       true
     end
 
@@ -1100,10 +1189,11 @@ module RTerm
       @focused
     end
 
-    # Removes focus from the terminal (no-op for headless runtime).
+    # Removes focus from the terminal input surface.
     def blur
       @focused = false
-      @terminal.emit(:blur)
+      @textarea&.set_focused(false)
+      @terminal.emit(:blur, { element: @container, textarea: @textarea })
       true
     end
 
@@ -1669,6 +1759,46 @@ module RTerm
     end
 
     private
+
+    def attach_textarea(container, textarea)
+      return unless container && textarea
+
+      if container.respond_to?(:append_child)
+        container.append_child(textarea)
+      elsif container.respond_to?(:appendChild)
+        container.appendChild(textarea)
+      end
+    end
+
+    def input_surface_payload(data, was_user_input:)
+      {
+        data: data,
+        value: @textarea&.value,
+        textarea: @textarea,
+        element: @container,
+        was_user_input: was_user_input
+      }
+    end
+
+    def update_composition(data, active:)
+      @composition = {
+        active: active,
+        data: data.to_s
+      }
+      @textarea&.set_composition(@composition[:data], active: active)
+      @composition
+    end
+
+    def composition_payload(event, data, committed: false)
+      {
+        event: event,
+        data: data,
+        active: @composition[:active],
+        committed: committed,
+        textarea: @textarea,
+        element: @container
+      }
+    end
 
     def render_decorations(_payload = nil)
       return if @decorations.empty?
