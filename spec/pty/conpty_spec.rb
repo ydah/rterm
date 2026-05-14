@@ -121,6 +121,45 @@ RSpec.describe RTerm::ConPTY do
     expect(received_options).to include(command: "cmd.exe", cols: 120)
   end
 
+  it "uses the bundled process backend by default when the platform is supported" do
+    backend = Class.new do
+      def write(_data)
+        true
+      end
+
+      def on_data
+        RTerm::Common::Disposable.new {}
+      end
+
+      def on_exit
+        RTerm::Common::Disposable.new {}
+      end
+
+      def resize(_cols, _rows)
+        true
+      end
+
+      def close(timeout: 1.0)
+        timeout
+      end
+
+      def wait_for_exit(_timeout = nil)
+        0
+      end
+
+      def alive?
+        true
+      end
+    end.new
+
+    allow(described_class).to receive(:supported?).and_return(true)
+    allow(RTerm::ConPTY::ProcessBackend).to receive(:new).with(command: "cmd.exe").and_return(backend)
+
+    conpty = described_class.new(command: "cmd.exe")
+
+    expect(conpty.backend).to equal(backend)
+  end
+
   it "describes and validates the backend contract" do
     expect(described_class.backend_contract[:required]).to include(
       :write,
@@ -143,5 +182,27 @@ RSpec.describe RTerm::ConPTY do
     expect(described_class.available?).to be true
   ensure
     described_class.configure_backend(nil)
+  end
+
+  it "provides a process backend implementation" do
+    backend = RTerm::ConPTY::ProcessBackend.new(
+      command: Gem.ruby,
+      args: ["-e", "STDOUT.write('ready'); STDOUT.flush"]
+    )
+    output = nil
+    deadline = Time.now + 1
+
+    until output || Time.now >= deadline
+      output = backend.read
+      sleep 0.01 unless output
+    end
+
+    expect(output).to eq("ready")
+    expect(backend.resize(120, 40)).to be true
+    expect(backend.cols).to eq(120)
+    expect(backend.rows).to eq(40)
+    expect(backend.wait_for_exit(1)).to eq(0)
+  ensure
+    backend&.close
   end
 end

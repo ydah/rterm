@@ -341,16 +341,17 @@ More examples:
 ConPTY backend adapter:
 
 ```ruby
-RTerm::ConPTY.configure_backend(lambda { |**options| MyConPTYBackend.new(**options) })
 conpty = RTerm::ConPTY.new(command: "cmd.exe", cols: 80, rows: 24)
 conpty.on_data { |data| term.write(data) }
 puts RTerm::ConPTY.backend_contract[:required]
+
+RTerm::ConPTY.configure_backend(lambda { |**options| MyConPTYBackend.new(**options) })
 ```
 
 ## Platform Status
 
 - Unix PTY: supported through the PTY backend.
-- Windows ConPTY: adapter API is available; native process handling is supplied by the host backend.
+- Windows ConPTY: adapter API and bundled process backend are available; host backends can override native process handling.
 - Rendering: headless screen tree and RGBA raster rendering are included; native Canvas/DOM/GPU presentation is supplied by the host.
 
 ## Documentation

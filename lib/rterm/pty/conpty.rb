@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "conpty/process_backend"
+
 module RTerm
   # Boundary for a Windows ConPTY-backed PTY adapter.
   class ConPTY
@@ -44,7 +46,7 @@ module RTerm
 
     # @return [Boolean]
     def self.available?
-      supported? && backend_factory.respond_to?(:call)
+      supported?
     end
 
     def self.configure_backend(factory = nil, &block)
@@ -165,11 +167,9 @@ module RTerm
       end
 
       callable = factory || self.class.backend_factory
-      unless callable.respond_to?(:call)
-        raise BackendUnavailableError, "RTerm::ConPTY requires a backend factory"
-      end
+      return callable.call(**@options) if callable.respond_to?(:call)
 
-      callable.call(**@options)
+      ProcessBackend.new(**@options)
     end
 
     def validate_backend!(candidate)
