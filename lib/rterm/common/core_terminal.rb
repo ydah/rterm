@@ -73,8 +73,8 @@ module RTerm
         @rows = rows
         @options = @options.merge(cols: cols, rows: rows)
         @services.register(Services::OPTIONS_SERVICE, @options)
-        @buffer_set.normal.resize(cols, rows)
-        @buffer_set.alt.resize(cols, rows)
+        @buffer_set.normal.resize(cols, rows, reflow_cursor_line: @options.reflow_cursor_line)
+        @buffer_set.alt.resize(cols, rows, reflow_cursor_line: @options.reflow_cursor_line)
         emit(:resize, { cols: cols, rows: rows })
       end
 

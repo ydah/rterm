@@ -266,6 +266,12 @@ module RTerm
           :position
         when "color"
           :color
+        when "showTopBorder", "show_top_border"
+          :showTopBorder
+        when "showBottomBorder", "show_bottom_border"
+          :showBottomBorder
+        when "width"
+          :width
         else
           key.to_s.tr("-", "_").to_sym
         end
@@ -455,7 +461,7 @@ module RTerm
     def paste(data)
       text = data.to_s
       payload = text
-      payload = "\e[200~#{payload}\e[201~" if modes[:bracketed_paste_mode]
+      payload = "\e[200~#{payload}\e[201~" if modes[:bracketed_paste_mode] && !options.ignore_bracketed_paste_mode
       result = input(payload)
       @textarea&.set_value(text) if result
       result

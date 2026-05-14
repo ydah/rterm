@@ -748,10 +748,25 @@ RSpec.describe "specification APIs" do
     terminal = RTerm::Terminal.new
     marker = terminal.registerMarker
 
-    decoration = terminal.registerDecoration(marker, overviewRulerOptions: { color: "#ff00ff" })
+    decoration = terminal.registerDecoration(
+      marker,
+      overviewRulerOptions: {
+        color: "#ff00ff",
+        showTopBorder: true,
+        showBottomBorder: true,
+        width: 6
+      }
+    )
 
     expect(terminal.instance_variable_get(:@decorations)).to include(decoration)
-    expect(decoration.options).to eq(overviewRulerOptions: { color: "#ff00ff" })
+    expect(decoration.options).to eq(
+      overviewRulerOptions: {
+        color: "#ff00ff",
+        showTopBorder: true,
+        showBottomBorder: true,
+        width: 6
+      }
+    )
 
     decoration.dispose
     expect(terminal.instance_variable_get(:@decorations)).not_to include(decoration)

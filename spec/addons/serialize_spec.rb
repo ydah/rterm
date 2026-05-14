@@ -181,6 +181,16 @@ RSpec.describe RTerm::Addon::Serialize do
       expect(html).to include("color:")
       expect(html).to include("Red")
     end
+
+    it "serializes a visible row range" do
+      terminal.write("one\r\ntwo\r\nthree")
+
+      html = serializer.serialize_as_html(range: { start: 1, end: 1 })
+
+      expect(html).to include("two")
+      expect(html).not_to include("one")
+      expect(html).not_to include("three")
+    end
   end
 
   describe "#snapshot and #restore" do

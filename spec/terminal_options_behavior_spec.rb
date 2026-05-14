@@ -20,6 +20,18 @@ RSpec.describe "terminal option behavior" do
     expect(received).to be_nil
   end
 
+  it "can ignore bracketed paste mode" do
+    terminal = RTerm::Terminal.new(ignoreBracketedPasteMode: true)
+    received = nil
+    terminal.on(:data) { |data| received = data }
+
+    terminal.write("\e[?2004h")
+    payload = terminal.paste("hello")
+
+    expect(payload).to eq("hello")
+    expect(received).to eq("hello")
+  end
+
   it "resolves bold text to bright ANSI colors when enabled" do
     terminal = RTerm::Terminal.new(draw_bold_text_in_bright_colors: true)
     cell = RTerm::Common::CellData.new

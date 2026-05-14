@@ -77,10 +77,10 @@ module RTerm
       # Resizes the buffer to the given dimensions.
       # @param new_cols [Integer] new number of columns
       # @param new_rows [Integer] new number of rows
-      def resize(new_cols, new_rows)
+      def resize(new_cols, new_rows, reflow_cursor_line: true)
         old_scroll_bottom = @scroll_bottom
         old_rows = @rows
-        reflow_lines(new_cols, new_rows) if new_cols != @cols
+        reflow_lines(new_cols, new_rows, reflow_cursor_line: reflow_cursor_line) if new_cols != @cols
 
         @cols = new_cols
         @rows = new_rows
@@ -223,9 +223,16 @@ module RTerm
         [@lines.length - @rows, 0].max
       end
 
-      def reflow_lines(new_cols, new_rows)
+      def reflow_lines(new_cols, new_rows, reflow_cursor_line: true)
+        cursor_line = @y_base + @y
         groups = logical_line_groups
-        reflowed = groups.flat_map { |group| reflow_group(group, new_cols) }
+        reflowed = groups.flat_map do |group|
+          if !reflow_cursor_line && group.include?(@lines[cursor_line])
+            resize_group_without_reflow(group, new_cols)
+          else
+            reflow_group(group, new_cols)
+          end
+        end
         reflowed << BufferLine.new(new_cols) while reflowed.length < new_rows
 
         @lines = CircularList.new(new_rows + @scrollback)
@@ -278,6 +285,16 @@ module RTerm
 
         lines << current_line
         lines
+      end
+
+      def resize_group_without_reflow(group, new_cols)
+        group.map do |line|
+          next BufferLine.new(new_cols) unless line
+
+          resized = line.clone
+          resized.resize(new_cols, CellData.new)
+          resized
+        end
       end
 
       def reflowable_cells(line)

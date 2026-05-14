@@ -11,6 +11,11 @@ RSpec.describe RTerm::TerminalOptions do
     expect(options.convert_eol).to be false
     expect(options.clipboard_enabled).to be true
     expect(options.clipboard_max_bytes).to eq(1_048_576)
+    expect(options.custom_glyphs).to be true
+    expect(options.reflow_cursor_line).to be false
+    expect(options.rescale_overlapping_glyphs).to be false
+    expect(options.scroll_on_erase_in_display).to be false
+    expect(options.ignore_bracketed_paste_mode).to be false
   end
 
   it "accepts overrides and exposes hash-style access" do
@@ -22,11 +27,19 @@ RSpec.describe RTerm::TerminalOptions do
   end
 
   it "accepts camelCase override keys" do
-    options = described_class.new(cursorStyle: :underline, scrollOnUserInput: false, convertEOL: true)
+    options = described_class.new(
+      cursorStyle: :underline,
+      scrollOnUserInput: false,
+      convertEOL: true,
+      reflowCursorLine: true,
+      scrollOnEraseInDisplay: true
+    )
 
     expect(options.cursor_style).to eq(:underline)
     expect(options.scroll_on_user_input).to be false
     expect(options.convert_eol).to be true
+    expect(options.reflow_cursor_line).to be true
+    expect(options.scroll_on_erase_in_display).to be true
   end
 
   it "duplicates nested option hashes" do

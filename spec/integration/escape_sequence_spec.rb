@@ -132,6 +132,18 @@ RSpec.describe "Escape Sequence Integration" do
       expect(term.buffer.active.get_line(1).to_string).to eq("")
     end
 
+    it "ED mode 2 can push erased display content to scrollback" do
+      terminal = RTerm::Terminal.new(cols: 10, rows: 2, scrollback: 10, scrollOnEraseInDisplay: true)
+      terminal.write("ABCDEFGHIJ\r\n")
+      terminal.write("KLMNOPQRST")
+
+      terminal.write("\e[2J")
+
+      expect(terminal.buffer.active.y_base).to eq(2)
+      expect(terminal.buffer.active.lines[0].to_string).to eq("ABCDEFGHIJ")
+      expect(terminal.buffer.active.get_line(0).to_string).to eq("")
+    end
+
     it "EL mode 0: erases from cursor to end of line" do
       term.write("\e[1;5H\e[0K")
       expect(term.buffer.active.get_line(0).to_string).to eq("ABCD")
@@ -328,6 +340,28 @@ RSpec.describe "Escape Sequence Integration" do
         { active: true, mode: 2026 },
         { active: false, mode: 2026 }
       ])
+    end
+  end
+
+  describe "resize reflow options" do
+    it "does not reflow the cursor line by default" do
+      terminal = RTerm::Terminal.new(cols: 10, rows: 4)
+      terminal.write("abcdefghij")
+
+      terminal.resize(5, 4)
+
+      expect(terminal.buffer.active.get_line(0).to_string).to eq("abcde")
+      expect(terminal.buffer.active.get_line(1).to_string).to eq("")
+    end
+
+    it "reflows the cursor line when enabled" do
+      terminal = RTerm::Terminal.new(cols: 10, rows: 4, reflowCursorLine: true)
+      terminal.write("abcdefghij")
+
+      terminal.resize(5, 4)
+
+      expect(terminal.buffer.active.get_line(0).to_string).to eq("abcde")
+      expect(terminal.buffer.active.get_line(1).to_string).to eq("fghij")
     end
   end
 

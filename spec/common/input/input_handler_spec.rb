@@ -363,6 +363,27 @@ RSpec.describe RTerm::Common::InputHandler do
           expect(line_text(y)).to eq("")
         end
       end
+
+      it "mode 2 can scroll erased display content into scrollback" do
+        scroll_buffer_set = RTerm::Common::BufferSet.new(cols, rows)
+        scroll_parser = RTerm::Common::EscapeSequenceParser.new
+        described_class.new(scroll_buffer_set, scroll_parser, scroll_on_erase_in_display: true)
+
+        rows.times do |y|
+          scroll_buffer_set.active.x = 0
+          scroll_buffer_set.active.y = y if y > 0
+          scroll_parser.parse("Line #{y}".ljust(cols))
+          scroll_buffer_set.active.y = y
+        end
+
+        scroll_parser.parse("\e[2J")
+
+        expect(scroll_buffer_set.active.y_base).to eq(rows)
+        expect(scroll_buffer_set.active.lines[0].to_string(trim_right: true)).to eq("Line 0")
+        rows.times do |y|
+          expect(scroll_buffer_set.active.get_line(y).to_string(trim_right: true)).to eq("")
+        end
+      end
     end
 
     describe "EL (K) - erase in line" do

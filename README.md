@@ -203,6 +203,16 @@ colors = term.cell_colors(cell)
 cursor = term.cursor_info(active: false)
 ```
 
+Resize and erase behavior:
+
+```ruby
+term = RTerm::Terminal.new(
+  reflowCursorLine: true,
+  scrollOnEraseInDisplay: true,
+  ignoreBracketedPasteMode: true
+)
+```
+
 Synchronized output mode:
 
 ```ruby

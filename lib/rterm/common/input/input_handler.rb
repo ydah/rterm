@@ -56,6 +56,7 @@ module RTerm
         @clipboard_max_bytes = options.fetch(:clipboard_max_bytes, 1_048_576).to_i
         @clipboard_read_handler = options[:clipboard_read_handler]
         @clipboard_write_handler = options[:clipboard_write_handler]
+        @scroll_on_erase_in_display = options[:scroll_on_erase_in_display] == true
         @images = []
         @title = ""
         @icon_name = ""
@@ -888,8 +889,12 @@ module RTerm
           replace_cells(line, 0, buf.x + 1, erase_cell, selective: selective)
         when 2
           # Erase entire display
-          buf.rows.times do |y|
-            replace_cells(buf.get_line(y), 0, buf.cols, erase_cell, selective: selective)
+          if @scroll_on_erase_in_display && !selective
+            buf.scroll_up(buf.rows)
+          else
+            buf.rows.times do |y|
+              replace_cells(buf.get_line(y), 0, buf.cols, erase_cell, selective: selective)
+            end
           end
         when 3
           # Erase scrollback

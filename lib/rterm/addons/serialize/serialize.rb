@@ -91,7 +91,7 @@ module RTerm
         buffer = options[:exclude_alt_buffer] ? buffer_set.normal : buffer_set.active
         result = +"<pre>"
 
-        indexes = line_indexes(buffer, options.fetch(:scrollback, 0))
+        indexes = html_line_indexes(buffer, options)
         indexes.each_with_index do |line_index, index|
           line = buffer.lines[line_index]
           next unless line
@@ -430,6 +430,40 @@ module RTerm
         start = [buffer.y_base - scrollback, 0].max
         finish = [buffer.y_base + buffer.rows - 1, buffer.lines.length - 1].min
         (start..finish).to_a
+      end
+
+      def html_line_indexes(buffer, options)
+        indexes = line_indexes(buffer, options.fetch(:scrollback, 0))
+        range = normalize_html_range(options[:range] || options[:line_range] || options[:rows])
+        return indexes unless range
+
+        start_index = buffer.y_base + range[:start]
+        end_index = buffer.y_base + range[:end]
+        indexes.select { |index| index.between?(start_index, end_index) }
+      end
+
+      def normalize_html_range(value)
+        return nil if value.nil?
+
+        if value.is_a?(Range)
+          return { start: value.begin.to_i, end: value.end.to_i - (value.exclude_end? ? 1 : 0) }
+        end
+
+        if value.respond_to?(:to_h)
+          data = value.to_h
+          start_row = data[:start] || data["start"] || data[:start_row] || data["startRow"] || data["start_row"]
+          end_row = data[:end] || data["end"] || data[:end_row] || data["endRow"] || data["end_row"]
+          return nil if start_row.nil? || end_row.nil?
+
+          return { start: start_row.to_i, end: end_row.to_i }
+        end
+
+        return nil unless value.respond_to?(:to_a)
+
+        rows = value.to_a
+        return nil if rows.empty?
+
+        { start: rows.first.to_i, end: rows.last.to_i }
       end
 
       def serialize_modes

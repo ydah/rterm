@@ -2,7 +2,7 @@
 
 RSpec.describe "resize reflow properties" do
   it "preserves logical text while changing dimensions" do
-    terminal = RTerm::Terminal.new(cols: 10, rows: 5, scrollback: 20)
+    terminal = RTerm::Terminal.new(cols: 10, rows: 5, scrollback: 20, reflowCursorLine: true)
     text = "alpha beta gamma delta epsilon"
     terminal.write(text)
 
