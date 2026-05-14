@@ -11,7 +11,7 @@ helpers; rendering stays in the host application.
 - OSC/DCS support including OSC 8 hyperlinks, OSC 52 clipboard policy hooks, Sixel, and iTerm2 image metadata
 - PTY integration for interactive shell processes, including cwd/env, stdin close, pause/resume, process groups, and exit lifecycle
 - Browser bridge protocol for WebSocket-based terminal apps with session resume, attach policies, rate limits, heartbeat timeouts, origin checks, and binary negotiation
-- Addons: Attach, Search, Serialize, Fit, Clipboard, Progress, Image, Unicode11, UnicodeGraphemes, WebLinks
+- Addons: Attach, Search, Serialize, Fit, Clipboard, Progress, Image, Ligatures, Unicode11, UnicodeGraphemes, WebLinks
 
 ## Requirements
 
@@ -121,6 +121,14 @@ term.load_addon(images)
 
 images.on_image { |image| puts image[:protocol] }
 term.write("\ePqABCDEF\e\\")
+```
+
+Ligature ranges:
+
+```ruby
+ligatures = RTerm::Addon::Ligatures.new
+term.load_addon(ligatures)
+puts ligatures.ranges("a => b").first # => {:start=>2, :end=>4, :text=>"=>", :row=>nil}
 ```
 
 Unicode width helpers:
