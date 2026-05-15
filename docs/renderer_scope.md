@@ -17,11 +17,11 @@ Use `RTerm::Addon::ScreenRenderer` when a Ruby-side render tree is needed. It re
 
 Use `RTerm::Addon::HtmlRenderer` when HTML and ARIA output is needed. It renders escaped terminal cells, row and cell roles, live-region text, and a standalone document option.
 
-Use `RTerm::Addon::RasterRenderer` when a Ruby-side pixel frame is needed. It renders cells into an RGBA buffer, advances cursor blink state, composites decoded Sixel and inline PNG images, and can export a PPM image for tooling.
+Use `RTerm::Addon::RasterRenderer` when a Ruby-side pixel frame is needed. It renders cells into an RGBA buffer, draws built-in bitmap text masks, advances cursor blink state, composites decoded Sixel, PNG, and GIF images, presents JPEG frame data as a deterministic raster preview, and can export a PPM image for tooling.
 
 Use `RTerm::Addon::HostIntegration` when a browser or native layer needs a stable command stream. It forwards mount, input, clipboard, font measurement, renderer, accessibility, and resize events, and it accepts host-originated key, mouse, paste, composition, viewport, and clipboard responses.
 
-Use `RTerm::BrowserAdapter` to serve the bundled browser-side JavaScript and CSS. The adapter connects to BrowserBridge WebSockets, renders `screen` commands into DOM rows and cells or an optional WebGL/2D canvas, applies cursor, links, and selection state, handles raster frames when requested, forwards keyboard, pointer, link, selection, paste, composition, clipboard, context menu, and resize events, measures character cells with browser layout, loads registered web fonts, and reports renderer context lifecycle events.
+Use `RTerm::BrowserAdapter` to serve the bundled browser-side JavaScript and CSS. The adapter connects to BrowserBridge WebSockets, renders `screen` commands into DOM rows and cells or an optional WebGL/2D canvas, applies cursor, links, and selection state, handles raster frames when requested, forwards keyboard, pointer, link, selection, paste, composition, clipboard, context menu, and resize events, measures character cells with browser layout, loads registered web fonts, mirrors accessibility trees into an off-screen DOM surface, and reports renderer context lifecycle events.
 
 BrowserBridge sessions always expose screen rendering and link metadata. Set `renderer: "raster"`, `renderers: ["screen", "raster"]`, or `raster: true` when creating a browser session to add raster frame commands for pixel-oriented clients.
 

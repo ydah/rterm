@@ -112,3 +112,12 @@
   top: auto;
   width: 1px;
 }
+
+.rterm-browser-accessibility {
+  height: 1px;
+  left: -10000px;
+  overflow: hidden;
+  position: absolute;
+  top: auto;
+  width: 1px;
+}

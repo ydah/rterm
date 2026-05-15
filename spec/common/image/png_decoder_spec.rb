@@ -34,12 +34,34 @@ RSpec.describe RTerm::Common::PngDecoder do
     expect(decoded[:pixels]).to eq([[[255, 0, 0, 255], [0, 0, 255, 64]]])
   end
 
+  it "decodes Adam7 interlaced PNG pixels" do
+    bytes = png_bytes(
+      2,
+      2,
+      6,
+      8,
+      [
+        [0, 255, 0, 0, 255].pack("C*"),
+        [0, 0, 255, 0, 255].pack("C*"),
+        [0, 0, 0, 255, 255, 255, 255, 255, 255].pack("C*")
+      ],
+      interlace: 1
+    )
+
+    decoded = described_class.decode(bytes)
+
+    expect(decoded[:pixels]).to eq([
+      [[255, 0, 0, 255], [0, 255, 0, 255]],
+      [[0, 0, 255, 255], [255, 255, 255, 255]]
+    ])
+  end
+
   it "returns nil for unsupported bytes" do
     expect(described_class.decode("not-png")).to be_nil
   end
 
-  def png_bytes(width, height, color_type, bit_depth, rows, palette: nil, transparency: nil)
-    header = [width, height, bit_depth, color_type, 0, 0, 0].pack("NNCCCCC")
+  def png_bytes(width, height, color_type, bit_depth, rows, palette: nil, transparency: nil, interlace: 0)
+    header = [width, height, bit_depth, color_type, 0, 0, interlace].pack("NNCCCCC")
     chunks = [
       png_chunk("IHDR", header),
       (png_chunk("PLTE", palette) if palette),

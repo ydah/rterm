@@ -14,6 +14,50 @@ module RTerm
         export_ppm: true
       }.freeze
       RENDERER_TYPE = :raster
+      BASIC_GLYPHS = {
+        "0" => %w[111 101 101 101 111],
+        "1" => %w[010 110 010 010 111],
+        "2" => %w[111 001 111 100 111],
+        "3" => %w[111 001 111 001 111],
+        "4" => %w[101 101 111 001 001],
+        "5" => %w[111 100 111 001 111],
+        "6" => %w[111 100 111 101 111],
+        "7" => %w[111 001 010 010 010],
+        "8" => %w[111 101 111 101 111],
+        "9" => %w[111 101 111 001 111],
+        "A" => %w[010 101 111 101 101],
+        "B" => %w[110 101 110 101 110],
+        "C" => %w[111 100 100 100 111],
+        "D" => %w[110 101 101 101 110],
+        "E" => %w[111 100 110 100 111],
+        "F" => %w[111 100 110 100 100],
+        "G" => %w[111 100 101 101 111],
+        "H" => %w[101 101 111 101 101],
+        "I" => %w[111 010 010 010 111],
+        "J" => %w[001 001 001 101 111],
+        "K" => %w[101 101 110 101 101],
+        "L" => %w[100 100 100 100 111],
+        "M" => %w[101 111 111 101 101],
+        "N" => %w[101 111 111 111 101],
+        "O" => %w[111 101 101 101 111],
+        "P" => %w[111 101 111 100 100],
+        "Q" => %w[111 101 101 111 001],
+        "R" => %w[111 101 111 110 101],
+        "S" => %w[111 100 111 001 111],
+        "T" => %w[111 010 010 010 010],
+        "U" => %w[101 101 101 101 111],
+        "V" => %w[101 101 101 101 010],
+        "W" => %w[101 101 111 111 101],
+        "X" => %w[101 101 010 101 101],
+        "Y" => %w[101 101 010 010 010],
+        "Z" => %w[111 001 010 100 111],
+        "." => %w[000 000 000 000 010],
+        "-" => %w[000 000 111 000 000],
+        "_" => %w[000 000 000 000 111],
+        "/" => %w[001 001 010 100 100],
+        "\\" => %w[100 100 010 001 001],
+        ":" => %w[000 010 000 010 000]
+      }.freeze
 
       attr_reader :frame, :cursor_visible, :rendered_at
 
@@ -24,6 +68,7 @@ module RTerm
         @draw_text = @options.fetch(:draw_text, true) != false
         @draw_images = @options.fetch(:draw_images, true) != false
         @draw_cursor = @options.fetch(:draw_cursor, true) != false
+        @glyph_renderer = @options[:glyph_renderer]
         @cursor_blink_interval = positive_float(@options[:cursor_blink_interval], 0.5)
         @cursor_visible = true
         @last_cursor_tick = nil
@@ -158,17 +203,39 @@ module RTerm
         fill_rect(x, y, @cell_width, @cell_height, parse_color(colors[:background]))
         return unless @draw_text && cell.has_content? && cell.width.positive? && cell.char != " "
 
-        draw_glyph_block(x, y, parse_color(colors[:foreground]))
+        draw_glyph(cell.char, x, y, parse_color(colors[:foreground]))
+      end
+
+      def draw_glyph(char, x, y, color)
+        mask = glyph_mask(char)
+        return draw_glyph_block(x, y, color) if mask.empty?
+
+        cell_left = x + [@cell_width / 8, 1].max
+        cell_top = y + [@cell_height / 8, 1].max
+        pixel_width = [(@cell_width - 2) / mask.first.length, 1].max
+        pixel_height = [(@cell_height - 2) / mask.length, 1].max
+        mask.each_with_index do |line, row|
+          line.chars.each_with_index do |bit, col|
+            next unless bit == "1"
+
+            fill_rect(cell_left + (col * pixel_width), cell_top + (row * pixel_height), pixel_width, pixel_height, color)
+          end
+        end
+      end
+
+      def glyph_mask(char)
+        custom = @glyph_renderer.call(char, @cell_width, @cell_height) if @glyph_renderer.respond_to?(:call)
+        return custom if custom.is_a?(Array)
+
+        BASIC_GLYPHS[char] || BASIC_GLYPHS[char.to_s.upcase] || []
       end
 
       def draw_glyph_block(x, y, color)
-        margin_x = [@cell_width / 4, 1].max
-        margin_y = [@cell_height / 4, 1].max
         fill_rect(
-          x + margin_x,
-          y + margin_y,
-          [@cell_width - (margin_x * 2), 1].max,
-          [@cell_height - (margin_y * 2), 1].max,
+          x + [@cell_width / 4, 1].max,
+          y + [@cell_height / 4, 1].max,
+          [@cell_width / 2, 1].max,
+          [@cell_height / 2, 1].max,
           color
         )
       end
@@ -199,6 +266,8 @@ module RTerm
             compose_rgba_image(decoded, col * @cell_width, row * @cell_height, image)
           elsif decoded[:format] == :indexed_rgba
             compose_indexed_image(decoded, col * @cell_width, row * @cell_height, image)
+          elsif decoded[:format] == :sampled
+            compose_sampled_image_preview(decoded, col * @cell_width, row * @cell_height, image)
           elsif decoded[:format] == :binary
             compose_binary_image_preview(decoded, col * @cell_width, row * @cell_height, image)
           end
@@ -268,6 +337,31 @@ module RTerm
         @frame[:images] << {
           protocol: source[:protocol],
           format: decoded[:format],
+          name: decoded[:name],
+          byte_size: decoded[:byte_size],
+          x: x,
+          y: y,
+          width: target_width,
+          height: target_height
+        }.compact
+      end
+
+      def compose_sampled_image_preview(decoded, x, y, source)
+        target_width = [image_cols(source) * @cell_width, decoded[:width].to_i, @cell_width].max
+        target_height = [image_rows(source) * @cell_height, decoded[:height].to_i, @cell_height].max
+        target_height.times do |row|
+          target_width.times do |col|
+            red = (col * 255 / [target_width - 1, 1].max)
+            green = (row * 255 / [target_height - 1, 1].max)
+            blue = preview_color(decoded[:bytes].to_s)[2]
+            set_pixel(x + col, y + row, [red, green, blue, 255])
+          end
+        end
+        outline_rect(x, y, target_width, target_height, [255, 255, 255, 160])
+        @frame[:images] << {
+          protocol: source[:protocol],
+          format: decoded[:format],
+          media_type: decoded[:media_type],
           name: decoded[:name],
           byte_size: decoded[:byte_size],
           x: x,

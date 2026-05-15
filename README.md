@@ -255,12 +255,12 @@ end
 | `Fit` | Compute terminal dimensions from available space. |
 | `Clipboard` | Handle text copy/paste and OSC 52 policy flows. |
 | `Progress` | Track OSC 9 progress state. |
-| `Image` | Track, decode, filter, and dispatch Sixel and inline PNG image payloads. |
+| `Image` | Track, decode, filter, and dispatch Sixel, PNG, GIF, and JPEG image payloads. |
 | `Ligatures` | Compute character join ranges. |
 | `Unicode11`, `UnicodeGraphemes` | Switch width providers and measure grapheme clusters. |
 | `WebFonts` | Register font faces, resolve fallback families, estimate cells, expose CSS, and trigger relayout events. |
 | `HostIntegration` | Bridge host mount, input, clipboard, font measurement, renderer, and accessibility events. |
-| `ScreenRenderer`, `HtmlRenderer`, `RasterRenderer` | Produce headless render trees, HTML/ARIA output, and RGBA frames. |
+| `ScreenRenderer`, `HtmlRenderer`, `RasterRenderer` | Produce headless render trees, HTML/ARIA output, bitmap text, and RGBA frames. |
 | `Canvas`, `WebGL` | Track external renderer lifecycle and cache state; browser assets include WebGL and 2D canvas rendering with cursor, links, selection, and raster frame handling. |
 | `WebLinks` | Detect and activate links with provider hooks. |
 

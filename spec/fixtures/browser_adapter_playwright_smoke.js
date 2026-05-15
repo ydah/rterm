@@ -84,19 +84,31 @@ const escapeScript = (source) => source.replace(/<\/script/gi, "<\\/script");
           }
         }
       });
+      adapter.applyCommand({
+        type: "accessibility",
+        payload: {
+          tree: {
+            role: "document",
+            label: "Terminal",
+            children: [{ role: "row", text: "ready" }]
+          }
+        }
+      });
 
       return {
         hostEvents: window.hostEvents,
         linkText: link.textContent,
         selected: link.classList.contains("is-selected"),
         canvas: Array.from(adapter.canvas.getContext("2d").getImageData(0, 0, 1, 1).data),
-        renderedClass: adapter.element.classList.contains("is-canvas")
+        renderedClass: adapter.element.classList.contains("is-canvas"),
+        accessibilityText: document.querySelector(".rterm-browser-accessibility").textContent
       };
     });
 
     assert.equal(result.linkText, "u");
     assert.equal(result.selected, true);
     assert.equal(result.renderedClass, true);
+    assert.equal(result.accessibilityText, "ready");
     assert.deepEqual(result.canvas, [90, 40, 10, 255]);
     assert.deepEqual(
       result.hostEvents.map((event) => event.type),

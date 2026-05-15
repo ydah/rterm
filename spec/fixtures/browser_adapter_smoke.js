@@ -248,4 +248,18 @@ assert.deepEqual(adapter.fit().cell, adapter.cell);
 adapter.refresh().setOption("rows", 3).focus().blur();
 assert.equal(adapter.rows, 3);
 
+adapter.applyCommand({
+  type: "accessibility",
+  payload: {
+    tree: {
+      role: "document",
+      label: "Terminal",
+      children: [{ role: "row", text: "ready" }]
+    }
+  }
+});
+const accessibility = root.querySelectorAll(".rterm-browser-accessibility")[0];
+assert.equal(accessibility.children[0].attributes.role, "document");
+assert.equal(accessibility.children[0].children[0].textContent, "ready");
+
 console.log("browser-adapter-smoke-ok");

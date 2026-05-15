@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "gif_decoder"
+require_relative "jpeg_decoder"
 require_relative "png_decoder"
 
 module RTerm
@@ -35,6 +37,12 @@ module RTerm
       def decode_binary(bytes)
         png = PngDecoder.decode(bytes)
         return png if png
+
+        gif = GifDecoder.decode(bytes)
+        return gif if gif
+
+        jpeg = JpegDecoder.decode(bytes)
+        return jpeg if jpeg
 
         { format: :binary }
       end

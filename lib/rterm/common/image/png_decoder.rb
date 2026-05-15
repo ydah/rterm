@@ -20,6 +20,15 @@ module RTerm
         4 => [8, 16],
         6 => [8, 16]
       }.freeze
+      ADAM7_PASSES = [
+        [0, 0, 8, 8],
+        [4, 0, 8, 8],
+        [0, 4, 4, 8],
+        [2, 0, 4, 4],
+        [0, 2, 2, 4],
+        [1, 0, 2, 2],
+        [0, 1, 1, 2]
+      ].freeze
 
       def self.decode(bytes)
         new(bytes).decode
@@ -38,7 +47,7 @@ module RTerm
         parse_chunks
         return nil unless supported?
 
-        rows = unfiltered_rows(Zlib::Inflate.inflate(@idat))
+        rows = pixel_rows(Zlib::Inflate.inflate(@idat))
         {
           format: :rgba,
           media_type: :png,
@@ -46,7 +55,7 @@ module RTerm
           height: @height,
           bit_depth: @bit_depth,
           color_type: @color_type,
-          pixels: rows.map { |row| rgba_row(row) }
+          pixels: rows
         }
       rescue Zlib::Error, ArgumentError
         nil
@@ -91,27 +100,59 @@ module RTerm
 
       def supported?
         return false unless @width.to_i.positive? && @height.to_i.positive?
-        return false unless @compression == 0 && @filter == 0 && @interlace == 0
+        return false unless @compression == 0 && @filter == 0 && [0, 1].include?(@interlace)
 
         SUPPORTED_DEPTHS.fetch(@color_type, []).include?(@bit_depth)
       end
 
-      def unfiltered_rows(data)
-        rows = []
-        previous = Array.new(scanline_bytes, 0)
-        offset = 0
+      def pixel_rows(data)
+        return unfiltered_rows(data, @width, @height).first.map { |row| rgba_row(row, @width) } if @interlace.zero?
 
-        @height.times do
+        interlaced_pixel_rows(data)
+      end
+
+      def unfiltered_rows(data, width, height, offset = 0)
+        rows = []
+        bytes = scanline_bytes(width)
+        previous = Array.new(bytes, 0)
+
+        height.times do
           filter = data.getbyte(offset)
           offset += 1
-          current = data.byteslice(offset, scanline_bytes).to_s.bytes
-          offset += scanline_bytes
+          current = data.byteslice(offset, bytes).to_s.bytes
+          offset += bytes
           row = unfilter_row(filter, current, previous)
           rows << row
           previous = row
         end
 
-        rows
+        [rows, offset]
+      end
+
+      def interlaced_pixel_rows(data)
+        pixels = Array.new(@height) { Array.new(@width) { [0, 0, 0, 0] } }
+        offset = 0
+        ADAM7_PASSES.each do |start_x, start_y, step_x, step_y|
+          width = pass_size(@width, start_x, step_x)
+          height = pass_size(@height, start_y, step_y)
+          next if width.zero? || height.zero?
+
+          rows, offset = unfiltered_rows(data, width, height, offset)
+          rows.each_with_index do |row, pass_y|
+            rgba_row(row, width).each_with_index do |color, pass_x|
+              x = start_x + (pass_x * step_x)
+              y = start_y + (pass_y * step_y)
+              pixels[y][x] = color if x < @width && y < @height
+            end
+          end
+        end
+        pixels
+      end
+
+      def pass_size(size, start, step)
+        return 0 if size <= start
+
+        ((size - start) + step - 1) / step
       end
 
       def unfilter_row(filter, current, previous)
@@ -164,65 +205,65 @@ module RTerm
         upper_left
       end
 
-      def rgba_row(row)
+      def rgba_row(row, pixel_count)
         case @color_type
-        when 0 then grayscale_row(row)
-        when 2 then truecolor_row(row)
-        when 3 then palette_row(row)
-        when 4 then grayscale_alpha_row(row)
-        when 6 then rgba_color_row(row)
+        when 0 then grayscale_row(row, pixel_count)
+        when 2 then truecolor_row(row, pixel_count)
+        when 3 then palette_row(row, pixel_count)
+        when 4 then grayscale_alpha_row(row, pixel_count)
+        when 6 then rgba_color_row(row, pixel_count)
         else
           []
         end
       end
 
-      def grayscale_row(row)
-        sample_values(row, 1).map do |gray|
+      def grayscale_row(row, pixel_count)
+        sample_values(row, 1, pixel_count).map do |gray|
           alpha = transparent_gray?(gray) ? 0 : 255
           [gray, gray, gray, alpha]
         end
       end
 
-      def truecolor_row(row)
-        sample_values(row, 3).map do |red, green, blue|
+      def truecolor_row(row, pixel_count)
+        sample_values(row, 3, pixel_count).map do |red, green, blue|
           alpha = transparent_rgb?(red, green, blue) ? 0 : 255
           [red, green, blue, alpha]
         end
       end
 
-      def palette_row(row)
-        packed_indices(row).map do |index|
+      def palette_row(row, pixel_count)
+        packed_indices(row, pixel_count).map do |index|
           color = @palette[index] || [0, 0, 0, 255]
           alpha = @transparency&.getbyte(index)
           [color[0], color[1], color[2], alpha.nil? ? color[3] : alpha]
         end
       end
 
-      def grayscale_alpha_row(row)
-        sample_values(row, 2).map { |gray, alpha| [gray, gray, gray, alpha] }
+      def grayscale_alpha_row(row, pixel_count)
+        sample_values(row, 2, pixel_count).map { |gray, alpha| [gray, gray, gray, alpha] }
       end
 
-      def rgba_color_row(row)
-        sample_values(row, 4).map { |red, green, blue, alpha| [red, green, blue, alpha] }
+      def rgba_color_row(row, pixel_count)
+        sample_values(row, 4, pixel_count).map { |red, green, blue, alpha| [red, green, blue, alpha] }
       end
 
-      def sample_values(row, samples_per_pixel)
+      def sample_values(row, samples_per_pixel, pixel_count)
         values = if @bit_depth == 16
           row.each_slice(2).map { |high, low| (((high.to_i << 8) + low.to_i) / 257.0).round }
         else
           row
         end
-        values.each_slice(samples_per_pixel).first(@width)
+        values.each_slice(samples_per_pixel).first(pixel_count)
       end
 
-      def packed_indices(row)
-        return row.first(@width) if @bit_depth == 8
+      def packed_indices(row, pixel_count)
+        return row.first(pixel_count) if @bit_depth == 8
 
         mask = (1 << @bit_depth) - 1
         result = []
         row.each do |byte|
           shift = 8 - @bit_depth
-          while shift >= 0 && result.length < @width
+          while shift >= 0 && result.length < pixel_count
             result << ((byte >> shift) & mask)
             shift -= @bit_depth
           end
@@ -246,8 +287,8 @@ module RTerm
         @transparency.unpack("n*").map { |sample| sample > 255 ? (sample / 257.0).round : sample }
       end
 
-      def scanline_bytes
-        ((@width * bits_per_pixel) + 7) / 8
+      def scanline_bytes(width)
+        ((width * bits_per_pixel) + 7) / 8
       end
 
       def bits_per_pixel

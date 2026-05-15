@@ -56,6 +56,31 @@ RSpec.describe RTerm::Common::Iterm2Decoder do
     expect(decoded[:pixels]).to eq([[[255, 0, 0, 255]]])
   end
 
+  it "decodes inline GIF pixels when the payload is a GIF image" do
+    image = {
+      protocol: :iterm2,
+      attributes: { "inline" => "1" },
+      data: [gif_bytes].pack("m0")
+    }
+
+    decoded = described_class.decode(image)
+
+    expect(decoded).to include(protocol: :iterm2, format: :rgba, media_type: :gif, width: 1, height: 1)
+    expect(decoded[:pixels]).to eq([[[255, 0, 0, 255]]])
+  end
+
+  it "decodes inline JPEG dimensions when the payload is a JPEG image" do
+    image = {
+      protocol: :iterm2,
+      attributes: { "inline" => "1" },
+      data: [jpeg_bytes].pack("m0")
+    }
+
+    decoded = described_class.decode(image)
+
+    expect(decoded).to include(protocol: :iterm2, format: :sampled, media_type: :jpeg, width: 2, height: 1)
+  end
+
   def png_bytes
     header = [1, 1, 8, 6, 0, 0, 0].pack("NNCCCCC")
     row = [0, 255, 0, 0, 255].pack("C*")
@@ -68,5 +93,22 @@ RSpec.describe RTerm::Common::Iterm2Decoder do
   def png_chunk(type, data)
     body = type + data
     [data.bytesize].pack("N") + body + [Zlib.crc32(body)].pack("N")
+  end
+
+  def gif_bytes
+    [
+      "GIF89a",
+      [1, 1, 0x80, 0, 0].pack("vvCCC"),
+      [255, 0, 0, 0, 0, 0].pack("C*"),
+      ",",
+      [0, 0, 1, 1, 0].pack("vvvvC"),
+      [2, 2, 0x44, 0x01, 0].pack("C*"),
+      ";"
+    ].join
+  end
+
+  def jpeg_bytes
+    frame = [8, 1, 2, 3, 1, 0x11, 0, 2, 0x11, 1, 3, 0x11, 1].pack("CnnC9")
+    "\xff\xd8".b + "\xff\xc0".b + [frame.bytesize + 2].pack("n") + frame + "\xff\xd9".b
   end
 end
