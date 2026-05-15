@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RTerm Browser Adapter</title>
+  <link rel="stylesheet" href="../lib/rterm/browser_adapter/browser_adapter.css">
+  <style>
+    body {
+      margin: 0;
+      padding: 24px;
+      background: #111827;
+    }
+
+    #terminal {
+      height: 420px;
+      max-width: 960px;
+    }
+  </style>
+</head>
+<body>
+  <div id="terminal"></div>
+  <script src="../lib/rterm/browser_adapter/webgl_renderer.js"></script>
+  <script src="../lib/rterm/browser_adapter/browser_adapter.js"></script>
+  <script>
+    const adapter = new RTermBrowserAdapter("#terminal", { renderer: "webgl", cols: 80, rows: 24 });
+    const cells = Array.from("RTerm browser adapter").map((char, col) => ({
+      row: 0,
+      col,
+      char,
+      width: 1,
+      colors: { foreground: "#e5e7eb", background: col < 5 ? "#0f766e" : "#0b0f14" },
+      attributes: { bold: col < 5 }
+    }));
+
+    adapter.applyCommand({
+      type: "screen",
+      payload: {
+        screen: {
+          cols: 80,
+          rows_count: 24,
+          rows: [{ row: 0, cells }]
+        }
+      }
+    });
+  </script>
+</body>
+</html>

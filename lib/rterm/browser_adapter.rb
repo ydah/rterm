@@ -3,11 +3,15 @@
 module RTerm
   module BrowserAdapter
     ASSET_DIR = File.expand_path("browser_adapter", __dir__)
+    JAVASCRIPT_ASSETS = %w[
+      webgl_renderer.js
+      browser_adapter.js
+    ].freeze
 
     module_function
 
     def javascript
-      File.read(asset_path("browser_adapter.js"))
+      JAVASCRIPT_ASSETS.map { |name| File.read(asset_path(name)) }.join("\n")
     end
 
     def stylesheet

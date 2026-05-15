@@ -8,7 +8,8 @@ RSpec.describe "gem package contents" do
     expect(spec.files).to include(
       "lib/rterm/browser_adapter.rb",
       "lib/rterm/browser_adapter/browser_adapter.js",
-      "lib/rterm/browser_adapter/browser_adapter.css"
+      "lib/rterm/browser_adapter/browser_adapter.css",
+      "lib/rterm/browser_adapter/webgl_renderer.js"
     )
     expect(spec.files.grep(%r{\A(?:spec|\.idea|\.github|tmp|pkg|doc)/})).to be_empty
   end

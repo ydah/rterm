@@ -141,7 +141,7 @@ app = lambda do |_env|
       RTerm::BrowserAdapter.style_tag,
       %(<div id="terminal" style="height: 480px"></div>),
       RTerm::BrowserAdapter.script_tag,
-      %(<script>new RTermBrowserAdapter("#terminal", { url: "wss://your-app.example/terminal" });</script>)
+      %(<script>new RTermBrowserAdapter("#terminal", { url: "wss://your-app.example/terminal", renderer: "webgl" });</script>)
     ]
   ]
 end
@@ -261,7 +261,7 @@ end
 | `WebFonts` | Register font faces, resolve fallback families, estimate cells, expose CSS, and trigger relayout events. |
 | `HostIntegration` | Bridge host mount, input, clipboard, font measurement, renderer, and accessibility events. |
 | `ScreenRenderer`, `HtmlRenderer`, `RasterRenderer` | Produce headless render trees, HTML/ARIA output, and RGBA frames. |
-| `Canvas`, `WebGL` | Track external renderer lifecycle and cache state. |
+| `Canvas`, `WebGL` | Track external renderer lifecycle and cache state; browser assets include a WebGL canvas renderer. |
 | `WebLinks` | Detect and activate links with provider hooks. |
 
 ## Platform Notes
@@ -282,6 +282,7 @@ end
 
 - `examples/basic_usage.rb`
 - `examples/addons.rb`
+- `examples/browser_adapter.html`
 - `examples/websocket_server.rb`
 - `examples/browser_bridge_production.rb`
 

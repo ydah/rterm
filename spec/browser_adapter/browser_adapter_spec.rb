@@ -6,17 +6,23 @@ RSpec.describe RTerm::BrowserAdapter do
     css = described_class.stylesheet
 
     expect(js).to include("RTermBrowserAdapter")
+    expect(js).to include("RTermWebGLRenderer")
     expect(js).to include("host_event")
     expect(js).to include("ResizeObserver")
     expect(js).to include("navigator.clipboard")
     expect(js).to include("FontFace")
+    expect(js).to include("createProgram")
+    expect(js).to include("texture2D")
     expect(css).to include(".rterm-browser")
+    expect(css).to include(".rterm-browser-webgl")
   end
 
   it "returns concrete asset paths and rejects unknown assets" do
     path = described_class.asset_path("browser_adapter.js")
+    renderer_path = described_class.asset_path("webgl_renderer.js")
 
     expect(File.file?(path)).to be true
+    expect(File.file?(renderer_path)).to be true
     expect { described_class.asset_path("../rterm.rb") }
       .to raise_error(ArgumentError, /unknown browser adapter asset/)
   end

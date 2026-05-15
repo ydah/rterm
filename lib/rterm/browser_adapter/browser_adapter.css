@@ -20,6 +20,19 @@
   grid-area: 1 / 1;
   overflow: hidden;
   white-space: pre;
+  z-index: 1;
+}
+
+.rterm-browser-webgl {
+  grid-area: 1 / 1;
+  height: 100%;
+  pointer-events: none;
+  width: 100%;
+  z-index: 0;
+}
+
+.rterm-browser.is-webgl .rterm-browser-screen {
+  opacity: 0;
 }
 
 .rterm-browser-row {

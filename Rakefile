@@ -30,6 +30,7 @@ namespace :package do
       lib/rterm/browser_adapter.rb
       lib/rterm/browser_adapter/browser_adapter.css
       lib/rterm/browser_adapter/browser_adapter.js
+      lib/rterm/browser_adapter/webgl_renderer.js
       README.md
       LICENSE.txt
     ]
