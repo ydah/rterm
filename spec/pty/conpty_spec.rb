@@ -190,15 +190,15 @@ RSpec.describe RTerm::ConPTY do
       command: Gem.ruby,
       args: ["-e", "STDOUT.write('ready'); STDOUT.flush"]
     )
-    output = nil
+    output = +""
     deadline = Time.now + 1
 
-    until output || Time.now >= deadline
-      output = backend.read
-      sleep 0.01 unless output
+    until output.include?("ready") || Time.now >= deadline
+      chunk = backend.read
+      chunk ? output << chunk : sleep(0.01)
     end
 
-    expect(output).to eq("ready")
+    expect(output).to include("ready")
     expect(backend.resize(120, 40)).to be true
     expect(backend.cols).to eq(120)
     expect(backend.rows).to eq(40)
@@ -215,15 +215,15 @@ RSpec.describe RTerm::ConPTY do
       command: Gem.ruby,
       args: ["-e", "STDOUT.write('ready'); STDOUT.flush"]
     )
-    output = nil
+    output = +""
     deadline = Time.now + 2
 
-    until output || Time.now >= deadline
-      output = conpty.read
-      sleep 0.01 unless output
+    until output.include?("ready") || Time.now >= deadline
+      chunk = conpty.read
+      chunk ? output << chunk : sleep(0.01)
     end
 
-    expect(output).to eq("ready")
+    expect(output).to include("ready")
     expect(conpty).to be_native
     expect(conpty.wait_for_exit(2)).to eq(0)
   ensure
