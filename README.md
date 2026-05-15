@@ -1,32 +1,34 @@
 # RTerm
 
-RTerm is a headless terminal emulator library for Ruby. It owns terminal state,
-ANSI/VT parsing, scrollback, selection, PTY integration, rendering snapshots, and
-BrowserBridge transport helpers. Native UI presentation stays in the host
-application.
+RTerm is a headless terminal emulator library for Ruby. It parses ANSI/VT
+streams, owns terminal state, and exposes PTY, rendering, image, and browser
+bridge APIs without forcing a native UI.
 
-## Features
+## Current Scope
 
-- ANSI/VT parser with scrollback, reflow, selection, mouse reporting, and mode state.
-- OSC/DCS support for hyperlinks, clipboard policy hooks, Sixel, iTerm2 images, progress, colors, and window operations.
-- PTY helpers for interactive processes, cwd/env, stdin close, pause/resume, process groups, and exit lifecycle.
-- BrowserBridge protocol for WebSocket sessions with resume, attach policies, rate limits, heartbeats, origin checks, and binary frames.
-- Browser adapter assets for DOM/WebGL rendering, link lifecycle, selection, input, clipboard, font measurement, resize observation, and renderer lifecycle events.
-- Rendering helpers for headless element trees, RGBA raster frames, renderer lifecycle state, and image decoding.
-- Addon APIs for search, serialization, clipboard, links, fonts, Unicode widths, ligatures, and renderer integrations.
+- Terminal core: buffer state, scrollback, reflow, selection, mouse reporting,
+  modes, OSC, DCS, colors, hyperlinks, clipboard policy, and window operations.
+- Process integration: Unix PTY support and a Windows ConPTY boundary.
+- Rendering: screen trees, HTML/ARIA output, RGBA raster frames, renderer
+  lifecycle state, and browser-side DOM/WebGL assets.
+- Images: Sixel and iTerm2 image payload tracking with PNG, GIF, and JPEG
+  decoding paths.
+- BrowserBridge: WebSocket session transport with resume, attach policies,
+  rate limits, heartbeats, origin checks, and binary frames.
+- Addons: search, serialization, clipboard, links, fonts, Unicode widths,
+  graphemes, ligatures, progress, images, and host integration.
 
 ## Requirements
 
 - Ruby 3.2 or later
+- `faye-websocket` for BrowserBridge WebSocket deployments
 
 ## Installation
 
 ```ruby
 # Gemfile
 gem "rterm"
-
-# BrowserBridge Rack/WebSocket deployments also need:
-gem "faye-websocket"
+gem "faye-websocket" # only for BrowserBridge WebSocket servers
 ```
 
 ```bash
@@ -45,68 +47,66 @@ line = term.buffer.active.get_line(0)
 puts line.to_string # => "Hello World!"
 ```
 
-## Common Workflows
+## Common Usage
 
-### Search And Serialize
+### Terminal State
+
+```ruby
+term.write("open https://example.com\r\n")
+term.select_url(8, 0)
+puts term.selection
+
+cell = term.buffer.active.get_line(0).get_cell(0)
+puts term.cell_colors(cell)
+puts term.cursor_info(active: false)
+```
+
+Useful options can be passed in snake_case or camelCase:
+
+```ruby
+term = RTerm::Terminal.new(
+  reflowCursorLine: true,
+  scrollOnEraseInDisplay: true,
+  ignoreBracketedPasteMode: true
+)
+```
+
+### Addons
 
 ```ruby
 search = RTerm::Addon::Search.new
 term.load_addon(search)
-
 term.write("error: failed\r\nerror: retrying")
-matches = search.find_all("error")
-puts matches.length # => 2
+puts search.find_all("error").length # => 2
 
 serializer = RTerm::Addon::Serialize.new
 term.load_addon(serializer)
-
 snapshot = serializer.snapshot(scrollback: 100)
 
-restored = RTerm::Terminal.new(cols: 80, rows: 24)
-restored_serializer = RTerm::Addon::Serialize.new
-restored.load_addon(restored_serializer)
-restored_serializer.restore(snapshot)
-```
-
-### Links, Clipboard, And Images
-
-```ruby
 links = RTerm::Addon::WebLinks.new
 term.load_addon(links)
 term.write("open https://example.com")
 links.open_link(links.find_links.first)
-
-clipboard = RTerm::Addon::Clipboard.new
-term.load_addon(clipboard)
-clipboard.write_text("ready")
-clipboard.paste
-
-images = RTerm::Addon::Image.new
-term.load_addon(images)
-term.write("\ePqABCDEF\e\\")
-puts images.decode(images.by_protocol(:sixel).first)[:result][:format]
 ```
 
-### Rendering Snapshots
+### Rendering
 
 ```ruby
 screen = RTerm::Addon::ScreenRenderer.new
 term.load_addon(screen)
-term.write("hello")
-
 puts screen.text
 puts screen.accessibility_tree[:children].first[:text]
-
-raster = RTerm::Addon::RasterRenderer.new(cell_width: 8, cell_height: 16)
-term.load_addon(raster)
-File.write("terminal.ppm", raster.to_ppm)
 
 html = RTerm::Addon::HtmlRenderer.new
 term.load_addon(html)
 puts html.to_html
+
+raster = RTerm::Addon::RasterRenderer.new(cell_width: 8, cell_height: 16)
+term.load_addon(raster)
+File.write("terminal.ppm", raster.to_ppm)
 ```
 
-Renderer lifecycle addons track host-side renderer state:
+Renderer lifecycle addons keep host renderer state close to terminal state:
 
 ```ruby
 renderer = RTerm::Addon::WebGL.new
@@ -117,83 +117,20 @@ renderer.update_scrollbar(visible: true, width: 12)
 renderer.on_context_loss { |event| warn event[:reason] }
 ```
 
-Host integration exposes a command stream for browser or native UI layers:
+### Images
 
 ```ruby
-host = RTerm::Addon::HostIntegration.new(transport: ->(command) {
-  # send command to the UI layer
-})
-term.load_addon(host)
-host.mount(focus: true)
+images = RTerm::Addon::Image.new
+term.load_addon(images)
 
-host.receive(type: :resize, cols: 120, rows: 34, cellWidth: 9, cellHeight: 18)
-host.receive(type: :key, key: :enter)
+# After terminal output emits an image payload:
+term.write("\ePqABCDEF\e\\")
+image = images.by_protocol(:sixel).first
+decoded = images.decode(image) if image
+puts decoded[:result][:format] if decoded
 ```
 
-Bundled browser assets can mount that stream directly in a page:
-
-```ruby
-app = lambda do |_env|
-  [
-    200,
-    { "content-type" => "text/html" },
-    [
-      RTerm::BrowserAdapter.style_tag,
-      %(<div id="terminal" style="height: 480px"></div>),
-      RTerm::BrowserAdapter.script_tag,
-      %(<script>new RTermBrowserAdapter("#terminal", { url: "wss://your-app.example/terminal", renderer: "webgl", raster: true });</script>)
-    ]
-  ]
-end
-```
-
-### Terminal APIs
-
-```ruby
-term.write("open https://example.com\r\n")
-term.select_url(8, 0)
-puts term.selection
-
-term.write("\e[?1006h\e[?1000h")
-term.mouse_event(button: :left, col: 4, row: 2)
-
-cell = term.buffer.active.get_line(0).get_cell(0)
-puts term.cell_colors(cell)
-puts term.cursor_info(active: false)
-```
-
-Useful behavior options:
-
-```ruby
-term = RTerm::Terminal.new(
-  reflowCursorLine: true,
-  scrollOnEraseInDisplay: true,
-  ignoreBracketedPasteMode: true
-)
-```
-
-### Input Surface And Decorations
-
-```ruby
-term.open
-term.on_textarea_input { |event| puts event[:data] }
-term.on_accessibility { |event| puts event[:last_announcement] }
-term.textarea.input("ls\r")
-
-marker = term.register_marker
-decoration = term.register_decoration(
-  marker,
-  x: 2,
-  width: 8,
-  className: "highlight",
-  backgroundColor: "#334155"
-)
-
-decoration.on_render { |element| puts element.dataset["row"] }
-term.refresh(0, term.rows - 1)
-```
-
-### PTY And ConPTY
+### PTY
 
 ```ruby
 pty = RTerm::Pty.new(
@@ -207,6 +144,8 @@ pty.on_data { |data| term.write(data) }
 pty.write("printf 'hello\\n'\r")
 pty.close
 ```
+
+Windows hosts can provide or configure a ConPTY backend:
 
 ```ruby
 conpty = RTerm::ConPTY.new(command: "cmd.exe", cols: 80, rows: 24)
@@ -230,7 +169,7 @@ message = RTerm::BrowserBridge::ProtocolHandler.decode(
 response = manager.process_message(message)
 ```
 
-Production WebSocket setup:
+BrowserBridge production servers should start from secure defaults:
 
 ```ruby
 RTerm::BrowserBridge::WebSocketServer.configure_secure_defaults do |config|
@@ -238,11 +177,20 @@ RTerm::BrowserBridge::WebSocketServer.configure_secure_defaults do |config|
   config.authenticator = lambda do |message|
     payload = message[:payload] || message["payload"] || {}
     token = payload[:token] || payload["token"]
-
     token == ENV.fetch("RTERM_BRIDGE_TOKEN")
   end
-  config.terminal_options = config.terminal_options.merge(scrollback: 5_000)
 end
+```
+
+The bundled browser adapter can mount a BrowserBridge session in a page:
+
+```ruby
+[
+  RTerm::BrowserAdapter.style_tag,
+  %(<div id="terminal" style="height: 480px"></div>),
+  RTerm::BrowserAdapter.script_tag,
+  %(<script>new RTermBrowserAdapter("#terminal", { url: "wss://your-app.example/terminal", renderer: "webgl", raster: true });</script>)
+]
 ```
 
 ## Addon Summary
@@ -255,30 +203,28 @@ end
 | `Fit` | Compute terminal dimensions from available space. |
 | `Clipboard` | Handle text copy/paste and OSC 52 policy flows. |
 | `Progress` | Track OSC 9 progress state. |
-| `Image` | Track, decode, filter, and dispatch Sixel, PNG, GIF, and JPEG image payloads. |
+| `Image` | Track, decode, filter, and dispatch Sixel, PNG, GIF, and JPEG payloads. |
 | `Ligatures` | Compute character join ranges. |
 | `Unicode11`, `UnicodeGraphemes` | Switch width providers and measure grapheme clusters. |
-| `WebFonts` | Register font faces, resolve fallback families, estimate cells, expose CSS, and trigger relayout events. |
-| `HostIntegration` | Bridge host mount, input, clipboard, font measurement, renderer, and accessibility events. |
-| `ScreenRenderer`, `HtmlRenderer`, `RasterRenderer` | Produce headless render trees, HTML/ARIA output, bitmap text, and RGBA frames. |
-| `Canvas`, `WebGL` | Track external renderer lifecycle and cache state; browser assets include WebGL and 2D canvas rendering with cursor, links, selection, and raster frame handling. |
+| `WebFonts` | Register font faces, expose CSS, estimate cells, and trigger relayout events. |
 | `WebLinks` | Detect and activate links with provider hooks. |
+| `HostIntegration` | Bridge host mount, input, clipboard, font, renderer, and accessibility events. |
+| `ScreenRenderer`, `HtmlRenderer`, `RasterRenderer` | Produce screen trees, HTML/ARIA output, and RGBA frames. |
+| `Canvas`, `WebGL` | Track renderer lifecycle and cache state. |
 
-## Platform Notes
+## Operational Notes
 
-- Unix PTY is supported through `RTerm::Pty`.
-- Windows process integration is available through `RTerm::ConPTY` and its bundled process backend. Host backends can override native process handling.
-- Headless screen trees, HTML/ARIA output, and RGBA raster rendering are included. Host applications can present these through their UI toolkit.
-
-## Security Notes
-
-- Disable clipboard handling for untrusted remote output with `clipboard_enabled: false`.
-- Set `allowed_origins` for BrowserBridge deployments.
-- Keep message size limits, rate limits, and heartbeat timeouts enabled in production.
+- `RTerm::Pty` is available on Unix-like systems.
+- `RTerm::ConPTY` defines the Windows process boundary and can use a host
+  backend.
+- Keep BrowserBridge origins, message size limits, rate limits, and heartbeats
+  enabled in production.
+- Disable clipboard handling for untrusted remote output with
+  `clipboard_enabled: false`.
 - Do not connect untrusted browser input directly to a privileged shell.
 - Validate URI schemes before activating OSC 8 hyperlinks.
 
-## More Examples
+## Examples
 
 - `examples/basic_usage.rb`
 - `examples/addons.rb`
@@ -302,20 +248,14 @@ bundle exec rspec
 bundle exec rake package:verify_contents
 ```
 
-Strict integration checks can be run when external terminal tools and browser automation are installed:
+Strict integration checks require external terminal tools and browser automation:
 
 ```bash
 bundle exec rake e2e:strict
 ```
 
 Set `RTERM_BROWSER_E2E=1` to require the Playwright browser smoke in local runs.
-
-Benchmarks live under `spec/benchmarks/` and can be run directly with Ruby:
-
-```bash
-ruby spec/benchmarks/parser_benchmark.rb
-ruby spec/benchmarks/search_benchmark.rb
-```
+Benchmarks live under `spec/benchmarks/`.
 
 ## License
 
