@@ -2,16 +2,18 @@
 
 rterm is a headless terminal core. It owns parsing, buffer state, selection, search, serialization, PTY integration, and bridge protocol behavior.
 
-Native renderer-specific responsibilities stay out of core:
+Renderer presentation is split between Ruby-side render products and host-side UI attachment:
 
 - Font loading and fallback selection.
 - Character cell measurement in a browser or native UI.
-- Native Canvas, DOM, GPU, or terminal widget presentation.
-- Accessibility presentation beyond emitted narration events.
+- Native Canvas, DOM, GPU, or terminal widget attachment.
+- Browser or native accessibility tree attachment.
 
 Use `RTerm::Services::CHAR_SIZE_SERVICE` to pass measured cell dimensions into integrations, and `Terminal#cell_colors` / `Terminal#cursor_info` to resolve renderer-facing policy from terminal options.
 
 Use `RTerm::Addon::ScreenRenderer` when a Ruby-side render tree is needed. It renders visible rows into headless elements, keeps a text snapshot, and exposes an accessibility tree that host integrations can present through their UI toolkit.
+
+Use `RTerm::Addon::HtmlRenderer` when HTML and ARIA output is needed. It renders escaped terminal cells, row and cell roles, live-region text, and a standalone document option.
 
 Use `RTerm::Addon::RasterRenderer` when a Ruby-side pixel frame is needed. It renders cells into an RGBA buffer, advances cursor blink state, composites decoded Sixel images, and can export a PPM image for tooling.
 
@@ -23,4 +25,4 @@ Renderer integrations can keep their host-side state in `RTerm::Addon::Canvas` o
 
 Image integrations can use the bundled Sixel and iTerm2 decoders, or `RTerm::Addon::Image#register_decoder` and `#render_all` to override decoding and delegate drawing to host code while keeping protocol metadata in the terminal core.
 
-When `screen_reader_mode` is enabled, `Terminal#open` creates a headless live-region element and emits `:accessibility` snapshots. Browser or native UI layers are still responsible for presenting that element to their accessibility tree.
+When `screen_reader_mode` is enabled, `Terminal#open` creates a headless live-region element and emits `:accessibility` snapshots. `HtmlRenderer` can turn that state into ARIA markup.

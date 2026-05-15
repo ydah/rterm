@@ -99,6 +99,10 @@ puts screen.accessibility_tree[:children].first[:text]
 raster = RTerm::Addon::RasterRenderer.new(cell_width: 8, cell_height: 16)
 term.load_addon(raster)
 File.write("terminal.ppm", raster.to_ppm)
+
+html = RTerm::Addon::HtmlRenderer.new
+term.load_addon(html)
+puts html.to_html
 ```
 
 Renderer lifecycle addons track host-side renderer state:
@@ -224,7 +228,7 @@ end
 | `Ligatures` | Compute character join ranges. |
 | `Unicode11`, `UnicodeGraphemes` | Switch width providers and measure grapheme clusters. |
 | `WebFonts` | Register font faces, expose CSS, and trigger relayout events. |
-| `ScreenRenderer`, `RasterRenderer` | Produce headless render trees and RGBA frames. |
+| `ScreenRenderer`, `HtmlRenderer`, `RasterRenderer` | Produce headless render trees, HTML/ARIA output, and RGBA frames. |
 | `Canvas`, `WebGL` | Track external renderer lifecycle and cache state. |
 | `WebLinks` | Detect and activate links with provider hooks. |
 
@@ -232,7 +236,7 @@ end
 
 - Unix PTY is supported through `RTerm::Pty`.
 - Windows process integration is available through `RTerm::ConPTY` and its bundled process backend. Host backends can override native process handling.
-- Headless screen trees and RGBA raster rendering are included. Native Canvas, DOM, GPU, or terminal widget presentation belongs in the host application.
+- Headless screen trees, HTML/ARIA output, and RGBA raster rendering are included. Host applications can present these through their UI toolkit.
 
 ## Security Notes
 
