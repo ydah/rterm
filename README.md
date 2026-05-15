@@ -116,6 +116,19 @@ renderer.update_scrollbar(visible: true, width: 12)
 renderer.on_context_loss { |event| warn event[:reason] }
 ```
 
+Host integration exposes a command stream for browser or native UI layers:
+
+```ruby
+host = RTerm::Addon::HostIntegration.new(transport: ->(command) {
+  # send command to the UI layer
+})
+term.load_addon(host)
+host.mount(focus: true)
+
+host.receive(type: :resize, cols: 120, rows: 34, cellWidth: 9, cellHeight: 18)
+host.receive(type: :key, key: :enter)
+```
+
 ### Terminal APIs
 
 ```ruby
@@ -228,6 +241,7 @@ end
 | `Ligatures` | Compute character join ranges. |
 | `Unicode11`, `UnicodeGraphemes` | Switch width providers and measure grapheme clusters. |
 | `WebFonts` | Register font faces, resolve fallback families, estimate cells, expose CSS, and trigger relayout events. |
+| `HostIntegration` | Bridge host mount, input, clipboard, font measurement, renderer, and accessibility events. |
 | `ScreenRenderer`, `HtmlRenderer`, `RasterRenderer` | Produce headless render trees, HTML/ARIA output, and RGBA frames. |
 | `Canvas`, `WebGL` | Track external renderer lifecycle and cache state. |
 | `WebLinks` | Detect and activate links with provider hooks. |

@@ -1618,9 +1618,19 @@ module RTerm
         value = clipboard_query_value(selections)
         return unless value
 
-        encoded = encode_clipboard_data(value)
-        emit(:data, "\e]52;#{selection};#{encoded}\a")
+        respond_to_clipboard(selection, value)
       end
+
+      def respond_to_clipboard(selection, value)
+        return if value.nil?
+
+        encoded = encode_clipboard_data(value)
+        sequence = "\e]52;#{selection};#{encoded}\a"
+        emit(:data, sequence)
+        sequence
+      end
+
+      public :respond_to_clipboard
 
       def clipboard_write_allowed?(payload)
         return [false, :disabled] unless @clipboard_enabled

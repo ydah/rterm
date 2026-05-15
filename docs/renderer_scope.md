@@ -19,6 +19,8 @@ Use `RTerm::Addon::HtmlRenderer` when HTML and ARIA output is needed. It renders
 
 Use `RTerm::Addon::RasterRenderer` when a Ruby-side pixel frame is needed. It renders cells into an RGBA buffer, advances cursor blink state, composites decoded Sixel images, and can export a PPM image for tooling.
 
+Use `RTerm::Addon::HostIntegration` when a browser or native layer needs a stable command stream. It forwards mount, input, clipboard, font measurement, renderer, accessibility, and resize events, and it accepts host-originated key, mouse, paste, composition, viewport, and clipboard responses.
+
 Renderer integrations can keep their host-side state in `RTerm::Addon::Canvas` or `RTerm::Addon::WebGL` with:
 
 - `attach_host` for the external element or view object.
