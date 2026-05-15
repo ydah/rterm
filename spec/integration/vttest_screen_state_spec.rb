@@ -2,9 +2,7 @@
 
 RSpec.describe "vttest screen-state assertions" do
   it "captures the vttest menu into terminal buffer state when available" do
-    vttest = command_path("vttest")
-    skip "vttest not installed" unless vttest || ENV["CI"] || ENV["RTERM_STRICT_E2E"] == "1"
-    raise "vttest not installed" unless vttest
+    vttest = required_command("vttest", strict: strict_vttest?)
 
     terminal = RTerm::Terminal.new(cols: 80, rows: 24)
     raw = +""
@@ -19,18 +17,14 @@ RSpec.describe "vttest screen-state assertions" do
 
     pty.write("q")
     wait_until(timeout: 1.0) { pty.exit_status }
-    pty.close
 
     terminal.select_all
     expect(terminal.selection).to match(/VT|test/i)
-  end
-
-  def command_path(command)
-    ENV.fetch("PATH", "").split(File::PATH_SEPARATOR).each do |directory|
-      path = File.join(directory, command)
-      return path if File.executable?(path) && !File.directory?(path)
+  ensure
+    if pty
+      pty.kill(:TERM) unless pty.exit_status
+      pty.close
     end
-    nil
   end
 
   def vttest_menu?(raw)
@@ -41,9 +35,13 @@ RSpec.describe "vttest screen-state assertions" do
     return if vttest_menu?(raw)
 
     message = "vttest did not render a menu in this PTY environment"
-    raise message if ENV["CI"] || ENV["RTERM_STRICT_E2E"] == "1"
+    raise message if strict_vttest?
 
     skip message
+  end
+
+  def strict_vttest?
+    ENV["RTERM_STRICT_E2E"] == "1"
   end
 
   def wait_until(timeout:)

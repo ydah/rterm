@@ -4,8 +4,7 @@ require "open3"
 
 RSpec.describe "browser adapter real browser smoke" do
   it "renders DOM links and raster canvas frames in a browser when Playwright is available" do
-    node = `command -v node`.strip
-    skip "node not installed" if node.empty?
+    node = required_command("node", strict: strict_browser_e2e?)
 
     stdout, stderr, status = Open3.capture3(node, "spec/fixtures/browser_adapter_playwright_smoke.js", chdir: Dir.pwd)
 

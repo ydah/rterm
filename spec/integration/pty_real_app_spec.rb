@@ -14,7 +14,7 @@ RSpec.describe "PTY real application integration" do
   end
 
   it "runs vim through a PTY when available" do
-    vim = required_command("vim")
+    vim = required_command("vim", strict: strict_ci_dependency?)
 
     _terminal, _raw, status = run_pty_app(
       vim,
@@ -26,7 +26,7 @@ RSpec.describe "PTY real application integration" do
   end
 
   it "runs tmux through a PTY when available" do
-    tmux = required_command("tmux")
+    tmux = required_command("tmux", strict: strict_ci_dependency?)
 
     socket = "rterm-test-#{Process.pid}-#{rand(10_000)}"
     _terminal, _raw, status = run_pty_app(
@@ -39,7 +39,7 @@ RSpec.describe "PTY real application integration" do
   end
 
   it "starts vttest through a PTY when available" do
-    vttest = required_command("vttest")
+    vttest = required_command("vttest", strict: strict_vttest?)
 
     _terminal, raw, _status = run_vttest_app(vttest)
     require_vttest_menu!(raw)
@@ -101,34 +101,20 @@ RSpec.describe "PTY real application integration" do
     true
   end
 
-  def command_path(command)
-    ENV.fetch("PATH", "").split(File::PATH_SEPARATOR).each do |directory|
-      path = File.join(directory, command)
-      return path if File.executable?(path) && !File.directory?(path)
-    end
-    nil
-  end
-
-  def required_command(command)
-    path = command_path(command)
-    return path if path
-
-    message = "#{command} not installed"
-    raise message if strict_e2e?
-
-    skip message
-  end
-
   def require_vttest_menu!(raw)
     return if vttest_menu?(raw)
 
     message = "vttest did not render a menu in this PTY environment"
-    raise message if strict_e2e?
+    raise message if strict_vttest?
 
     skip message
   end
 
-  def strict_e2e?
+  def strict_ci_dependency?
     ENV["CI"] || ENV["RTERM_STRICT_E2E"] == "1"
+  end
+
+  def strict_vttest?
+    ENV["RTERM_STRICT_E2E"] == "1"
   end
 end
