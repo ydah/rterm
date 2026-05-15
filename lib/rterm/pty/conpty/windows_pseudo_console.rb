@@ -256,12 +256,14 @@ module RTerm
           env_block = environment_block
           flags = EXTENDED_STARTUPINFO_PRESENT
           flags |= CREATE_UNICODE_ENVIRONMENT if env_block
+          process_attributes = security_attributes
+          thread_attributes = security_attributes
 
           result = Kernel32.CreateProcessW(
             nil,
             command_line,
-            nil,
-            nil,
+            process_attributes,
+            thread_attributes,
             0,
             flags,
             env_block,
@@ -391,6 +393,16 @@ module RTerm
 
         def process_information_size
           (pointer_size * 2) + 8
+        end
+
+        def security_attributes
+          attributes = "\0".b * security_attributes_size
+          attributes[0, 4] = [security_attributes_size].pack("L<")
+          attributes
+        end
+
+        def security_attributes_size
+          pointer_size == 8 ? 24 : 12
         end
 
         def close_handle(handle)
