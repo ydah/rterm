@@ -1,14 +1,30 @@
 # frozen_string_literal: true
 
-require 'pty'
 require 'io/console'
 require_relative "../common/event_emitter"
 
 module RTerm
+  PTY_AVAILABLE = begin
+    require 'pty'
+    true
+  rescue LoadError
+    false
+  end
+
   class Pty
+    class UnsupportedPlatformError < StandardError; end
+
     DEFAULT_READ_CHUNK_SIZE = 16 * 1024
 
     attr_reader :pid, :exit_status, :exit_signal, :process_group_id
+
+    def self.supported?
+      PTY_AVAILABLE
+    end
+
+    def self.available?
+      supported?
+    end
 
     # @param command [String] command to run (default: ENV['SHELL'] || '/bin/bash')
     # @param args [Array<String>] command arguments
@@ -20,6 +36,8 @@ module RTerm
     # @param process_group [Boolean] request a dedicated process group for the child
     def initialize(command: nil, args: [], env: {}, cwd: nil, cols: 80, rows: 24,
                    read_chunk_size: DEFAULT_READ_CHUNK_SIZE, process_group: false)
+      raise UnsupportedPlatformError, "RTerm::Pty requires Ruby PTY support" unless self.class.supported?
+
       cmd = command || ENV['SHELL'] || '/bin/bash'
       spawn_args = build_spawn_args(cmd, args, env, cwd, process_group)
       @process_group_requested = process_group
