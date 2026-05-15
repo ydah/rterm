@@ -315,11 +315,18 @@ module RTerm
       def decode_scan(payload)
         parse_scan_header(payload)
         entropy = read_entropy_data
+        if arithmetic_progressive_supported?
+          decode_arithmetic_progressive_scan(ArithmeticEntropyReader.new(entropy))
+          return nil
+        end
         if progressive_supported?
           decode_progressive_scan(EntropyReader.new(entropy))
           return nil
         end
         return metadata(format: :rgba, pixels: decode_lossless_pixels(EntropyReader.new(entropy))) if lossless_supported?
+        if arithmetic_lossless_supported?
+          return metadata(format: :rgba, pixels: decode_arithmetic_lossless_pixels(ArithmeticEntropyReader.new(entropy)))
+        end
         return metadata(format: :rgba, pixels: decode_arithmetic_pixels(ArithmeticEntropyReader.new(entropy))) if arithmetic_sequential_supported?
         return metadata unless baseline_supported?
 
@@ -390,6 +397,34 @@ module RTerm
           @successive_high.zero? &&
           @successive_low.zero? &&
           @components.all? { |component| @quantization[component[:quantization_id]] }
+      end
+
+      def arithmetic_progressive_supported?
+        @frame_marker == 0xca &&
+          supported_precision? &&
+          supported_component_count? &&
+          @components.all? { |component| @quantization[component[:quantization_id]] } &&
+          progressive_scan_parameters?
+      end
+
+      def arithmetic_lossless_supported?
+        @frame_marker == 0xcb &&
+          supported_precision? &&
+          supported_component_count? &&
+          @spectral_start.between?(1, 7) &&
+          @spectral_end.zero? &&
+          @successive_high.zero? &&
+          @successive_low < @precision &&
+          @components.all? { |component| component[:h].positive? && component[:v].positive? }
+      end
+
+      def progressive_scan_parameters?
+        valid_band = if @spectral_start.zero?
+                       @spectral_end.zero?
+                     else
+                       @scan_components.length == 1 && @spectral_start <= @spectral_end && @spectral_end < 64
+                     end
+        valid_band && (@successive_high.zero? || @successive_low == @successive_high - 1)
       end
 
       def supported_precision?
@@ -625,10 +660,129 @@ module RTerm
         @progressive_blocks.fetch(component[:id]).fetch(block_y).fetch(block_x)
       end
 
+      def decode_arithmetic_progressive_scan(reader)
+        prepare_progressive_blocks
+        prepare_arithmetic_progressive_scan
+        if @spectral_start.zero? && @spectral_end.zero?
+          decode_arithmetic_progressive_dc_scan(reader)
+        else
+          decode_arithmetic_progressive_ac_scan(reader)
+        end
+      end
+
+      def prepare_arithmetic_progressive_scan
+        reset_arithmetic_state unless @arithmetic_dc_stats && @arithmetic_ac_stats
+        if @spectral_start.zero? && @successive_high.zero?
+          @scan_components.each do |component|
+            table_id = component[:dc_table] || 0
+            @arithmetic_dc_stats[table_id] = arithmetic_contexts(ARITHMETIC_DC_STATS_SIZE)
+            @arithmetic_dc_contexts[component[:id]] = 0
+            @previous_dc[component[:id]] = 0
+          end
+        elsif @spectral_start.positive?
+          @scan_components.each do |component|
+            @arithmetic_ac_stats[component[:ac_table] || 0] = arithmetic_contexts(ARITHMETIC_AC_STATS_SIZE)
+          end
+        end
+      end
+
+      def decode_arithmetic_progressive_dc_scan(reader)
+        progressive_scan_blocks.each do |component, block_x, block_y|
+          block = progressive_block(component, block_x, block_y)
+          if @successive_high.zero?
+            diff = decode_arithmetic_difference(reader, component[:dc_table] || 0, component[:id])
+            @previous_dc[component[:id]] += diff
+            block[0] = @previous_dc[component[:id]] << @successive_low
+          elsif reader.decision(@arithmetic_fixed_context).nonzero?
+            block[0] |= 1 << @successive_low
+          end
+        end
+      end
+
+      def decode_arithmetic_progressive_ac_scan(reader)
+        raise ArgumentError, "progressive AC scans must target one component" unless @scan_components.length == 1
+
+        component = @scan_components.first
+        progressive_scan_blocks.each do |_scan_component, block_x, block_y|
+          block = progressive_block(component, block_x, block_y)
+          if @successive_high.zero?
+            decode_arithmetic_progressive_ac_initial(reader, component, block)
+          else
+            decode_arithmetic_progressive_ac_refinement(reader, component, block)
+          end
+        end
+      end
+
+      def decode_arithmetic_progressive_ac_initial(reader, component, block)
+        table_id = component[:ac_table] || 0
+        stats = @arithmetic_ac_stats[table_id]
+        index = @spectral_start
+        while index <= @spectral_end
+          state_offset = 3 * (index - 1)
+          break if reader.decision(stats[state_offset]).nonzero?
+
+          while reader.decision(stats[state_offset + 1]).zero?
+            state_offset += 3
+            index += 1
+            raise ArgumentError, "invalid JPEG arithmetic coefficient run" if index > @spectral_end
+          end
+
+          sign = reader.decision(@arithmetic_fixed_context)
+          state_offset += 2
+          magnitude, state_offset = decode_arithmetic_ac_magnitude(reader, stats, state_offset, table_id, index)
+          value = decode_arithmetic_magnitude_bits(reader, stats, state_offset, magnitude) + 1
+          block[ZIGZAG[index]] = (sign.zero? ? value : -value) << @successive_low
+          index += 1
+        end
+      end
+
+      def decode_arithmetic_progressive_ac_refinement(reader, component, block)
+        table_id = component[:ac_table] || 0
+        stats = @arithmetic_ac_stats[table_id]
+        bit_value = 1 << @successive_low
+        negative_bit_value = -bit_value
+        end_of_block_index = arithmetic_refinement_end_of_block_index(block)
+        index = @spectral_start
+
+        while index <= @spectral_end
+          state_offset = 3 * (index - 1)
+          break if index > end_of_block_index && reader.decision(stats[state_offset]).nonzero?
+
+          loop do
+            coefficient_index = ZIGZAG[index]
+            if block[coefficient_index].nonzero?
+              if reader.decision(stats[state_offset + 2]).nonzero?
+                block[coefficient_index] += block[coefficient_index].negative? ? negative_bit_value : bit_value
+              end
+              break
+            end
+
+            if reader.decision(stats[state_offset + 1]).nonzero?
+              block[coefficient_index] = reader.decision(@arithmetic_fixed_context).zero? ? bit_value : negative_bit_value
+              break
+            end
+
+            state_offset += 3
+            index += 1
+            raise ArgumentError, "invalid JPEG arithmetic coefficient run" if index > @spectral_end
+          end
+          index += 1
+        end
+      end
+
+      def arithmetic_refinement_end_of_block_index(block)
+        @spectral_end.downto(1).find { |index| block[ZIGZAG[index]].nonzero? } || 0
+      end
+
       def decode_lossless_pixels(reader)
         planes = lossless_planes
         @scan_components.length == 1 ? decode_lossless_component_scan(reader, planes) : decode_lossless_interleaved_scan(reader, planes)
         compose_pixels(normalize_planes(planes))
+      end
+
+      def decode_arithmetic_lossless_pixels(reader)
+        reset_arithmetic_state
+        decode_lossless_pixels(reader)
       end
 
       def lossless_planes
@@ -674,13 +828,21 @@ module RTerm
       end
 
       def decode_lossless_sample(reader, component, plane, x, y)
+        diff = arithmetic? ? decode_arithmetic_lossless_difference(reader, component) : decode_huffman_lossless_difference(reader, component)
+        predicted = lossless_prediction(plane, x, y)
+        plane[y][x] = clamp_sample(predicted + diff)
+      end
+
+      def decode_huffman_lossless_difference(reader, component)
         table = @huffman[:dc][component[:dc_table] || 0]
         raise ArgumentError, "missing JPEG Huffman table" unless table
 
         diff_size = decode_huffman(reader, table)
-        diff = receive(reader, diff_size)
-        predicted = lossless_prediction(plane, x, y)
-        plane[y][x] = clamp_sample(predicted + diff)
+        receive(reader, diff_size)
+      end
+
+      def decode_arithmetic_lossless_difference(reader, component)
+        decode_arithmetic_difference(reader, component[:dc_table] || 0, component[:id])
       end
 
       def lossless_prediction(plane, x, y)
@@ -766,18 +928,21 @@ module RTerm
 
       def decode_arithmetic_dc(reader, component, coefficients)
         table_id = component[:dc_table] || 0
-        stats = @arithmetic_dc_stats[table_id]
         context_key = component[:id]
-        state_offset = @arithmetic_dc_contexts[context_key]
 
+        @previous_dc[context_key] += decode_arithmetic_difference(reader, table_id, context_key)
+        coefficients[0] = @previous_dc[context_key]
+      end
+
+      def decode_arithmetic_difference(reader, table_id, context_key)
+        stats = @arithmetic_dc_stats[table_id]
+        state_offset = @arithmetic_dc_contexts[context_key]
         if reader.decision(stats[state_offset]).zero?
           @arithmetic_dc_contexts[context_key] = 0
+          0
         else
-          diff = decode_arithmetic_dc_diff(reader, stats, state_offset, table_id, context_key)
-          @previous_dc[context_key] += diff
+          decode_arithmetic_dc_diff(reader, stats, state_offset, table_id, context_key)
         end
-
-        coefficients[0] = @previous_dc[context_key]
       end
 
       def decode_arithmetic_dc_diff(reader, stats, state_offset, table_id, context_key)
