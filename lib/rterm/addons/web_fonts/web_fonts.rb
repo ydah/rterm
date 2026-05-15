@@ -133,6 +133,45 @@ module RTerm
         @faces.map { |face| font_face_rule(face) }.join("\n")
       end
 
+      def resolve_font_family(value = nil, fallback: "monospace")
+        requested = split_family(value || @terminal&.get_option(:font_family))
+        requested = [fallback] if requested.empty?
+        registered = families
+        loaded = loaded_families
+        selected = requested.find { |family| loaded.include?(family) } ||
+          requested.find { |family| registered.include?(family) } ||
+          requested.first ||
+          fallback
+        family = create_family((requested | [fallback]))
+
+        {
+          requested: requested,
+          registered: registered,
+          loaded: loaded,
+          selected: selected,
+          fallback: fallback,
+          font_family: family,
+          fontFamily: family
+        }
+      end
+
+      def measure_cell(font_size: nil, line_height: nil, letter_spacing: nil)
+        raise RuntimeError, "WebFonts addon is not active" unless @terminal
+
+        options = @terminal.options.to_h
+        size = @terminal.internal.services
+                        .get(Services::CHAR_SIZE_SERVICE)
+                        .estimate(
+                          font_size: font_size || options[:font_size],
+                          line_height: line_height || options[:line_height],
+                          letter_spacing: letter_spacing || options[:letter_spacing]
+                        )
+        payload = size.merge(font: resolve_font_family)
+        emit(:measure, payload)
+        @terminal.internal.emit(:font_measure, payload)
+        payload
+      end
+
       def on_load(&block)
         on(:load, &block)
       end
@@ -141,14 +180,21 @@ module RTerm
         on(:relayout, &block)
       end
 
+      def on_measure(&block)
+        on(:measure, &block)
+      end
+
       alias initialRelayout initial_relayout
       alias registerFont register_font
       alias loadFonts load_fonts
       alias loadedFonts loaded_fonts
       alias loadedFamilies loaded_families
       alias fontFaceCss font_face_css
+      alias resolveFontFamily resolve_font_family
+      alias measureCell measure_cell
       alias onLoad on_load
       alias onRelayout on_relayout
+      alias onMeasure on_measure
 
       private
 

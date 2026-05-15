@@ -227,7 +227,7 @@ end
 | `Image` | Track, decode, filter, and dispatch image payloads. |
 | `Ligatures` | Compute character join ranges. |
 | `Unicode11`, `UnicodeGraphemes` | Switch width providers and measure grapheme clusters. |
-| `WebFonts` | Register font faces, expose CSS, and trigger relayout events. |
+| `WebFonts` | Register font faces, resolve fallback families, estimate cells, expose CSS, and trigger relayout events. |
 | `ScreenRenderer`, `HtmlRenderer`, `RasterRenderer` | Produce headless render trees, HTML/ARIA output, and RGBA frames. |
 | `Canvas`, `WebGL` | Track external renderer lifecycle and cache state. |
 | `WebLinks` | Detect and activate links with provider hooks. |

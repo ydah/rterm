@@ -4,12 +4,14 @@ rterm is a headless terminal core. It owns parsing, buffer state, selection, sea
 
 Renderer presentation is split between Ruby-side render products and host-side UI attachment:
 
-- Font loading and fallback selection.
-- Character cell measurement in a browser or native UI.
+- Browser or native font loading beyond registered font-face metadata.
+- Browser or native cell measurement beyond `CharSizeService` estimates or supplied measurements.
 - Native Canvas, DOM, GPU, or terminal widget attachment.
 - Browser or native accessibility tree attachment.
 
 Use `RTerm::Services::CHAR_SIZE_SERVICE` to pass measured cell dimensions into integrations, and `Terminal#cell_colors` / `Terminal#cursor_info` to resolve renderer-facing policy from terminal options.
+
+Use `RTerm::Addon::WebFonts#resolve_font_family` and `#measure_cell` for Ruby-side fallback selection and estimated cell metrics. Host integrations can still supply exact measurements through `RTerm::Services::CHAR_SIZE_SERVICE`.
 
 Use `RTerm::Addon::ScreenRenderer` when a Ruby-side render tree is needed. It renders visible rows into headless elements, keeps a text snapshot, and exposes an accessibility tree that host integrations can present through their UI toolkit.
 

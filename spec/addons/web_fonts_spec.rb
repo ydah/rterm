@@ -87,4 +87,40 @@ RSpec.describe RTerm::Addon::WebFonts do
     expect(addon.loaded?("Fira Code")).to be true
     expect(terminal.getOption("fontFamily")).to eq("Fira Code")
   end
+
+  it "resolves fallback font families" do
+    terminal = RTerm::Terminal.new(fontFamily: '"JetBrains Mono", "Fira Code", monospace')
+    addon = described_class.new(false)
+    terminal.load_addon(addon)
+    addon.register_font("JetBrains Mono", "url('/fonts/jetbrains.woff2')")
+    addon.register_font("Fira Code", "url('/fonts/fira.woff2')")
+    addon.loadFonts("Fira Code")
+
+    resolved = addon.resolveFontFamily(fallback: "serif")
+
+    expect(resolved).to include(
+      requested: ["JetBrains Mono", "Fira Code", "monospace"],
+      selected: "Fira Code",
+      fallback: "serif"
+    )
+    expect(resolved[:fontFamily]).to eq('"JetBrains Mono", "Fira Code", monospace, serif')
+  end
+
+  it "estimates cell size and emits measure events" do
+    terminal = RTerm::Terminal.new(fontSize: 20, lineHeight: 1.2, letterSpacing: 1)
+    addon = described_class.new(false)
+    measures = []
+    terminal_events = []
+
+    addon.onMeasure { |payload| measures << payload }
+    terminal.on(:font_measure) { |payload| terminal_events << payload }
+    terminal.load_addon(addon)
+
+    measurement = addon.measureCell
+
+    expect(measurement).to include(width: 13.0, height: 24.0, source: :estimated)
+    expect(measurement[:font]).to include(selected: "courier-new")
+    expect(measures).to eq([measurement])
+    expect(terminal_events).to eq([measurement])
+  end
 end
