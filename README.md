@@ -22,6 +22,7 @@ bridge APIs without forcing a native UI.
 
 - Ruby 3.2 or later
 - `faye-websocket` for BrowserBridge WebSocket deployments
+- npm 9 or later when packaging browser adapter assets
 
 ## Installation
 
@@ -150,6 +151,7 @@ Windows hosts can provide or configure a ConPTY backend:
 ```ruby
 conpty = RTerm::ConPTY.new(command: "cmd.exe", cols: 80, rows: 24)
 conpty.on_data { |data| term.write(data) }
+conpty.kill(:TERM, group: true) if conpty.process_group_enabled?
 
 RTerm::ConPTY.configure_backend(lambda { |**options| MyConPTYBackend.new(**options) })
 ```
@@ -193,6 +195,19 @@ The bundled browser adapter can mount a BrowserBridge session in a page:
 ]
 ```
 
+The same browser adapter assets can be consumed from JavaScript tooling:
+
+```js
+import RTermBrowserAdapter, { RTermWebGLRenderer } from "rterm-browser-adapter";
+import "rterm-browser-adapter/style.css";
+
+new RTermBrowserAdapter("#terminal", {
+  url: "wss://your-app.example/terminal",
+  renderer: "webgl",
+  raster: true
+});
+```
+
 ## Addon Summary
 
 | Addon | Purpose |
@@ -215,8 +230,8 @@ The bundled browser adapter can mount a BrowserBridge session in a page:
 ## Operational Notes
 
 - `RTerm::Pty` is available on Unix-like systems.
-- `RTerm::ConPTY` defines the Windows process boundary and can use a host
-  backend.
+- `RTerm::ConPTY` defines the Windows process boundary, uses the bundled native
+  backend on Windows, and reports group termination support when available.
 - Keep BrowserBridge origins, message size limits, rate limits, and heartbeats
   enabled in production.
 - Disable clipboard handling for untrusted remote output with
@@ -246,6 +261,7 @@ cd rterm
 bundle install
 bundle exec rspec
 bundle exec rake package:verify_contents
+npm pack --dry-run
 ```
 
 Strict integration checks require external terminal tools and browser automation:
