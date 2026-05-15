@@ -14,7 +14,7 @@ Sixel and iTerm2 image payloads are parsed and can be decoded through the bundle
 
 ## PTY Spawn
 
-PTY commands inherit process privileges from the host process. Pass an explicit command, args, environment, working directory, and process-group policy. Do not forward untrusted browser input directly into a privileged shell.
+PTY commands inherit process privileges from the host process. Pass an explicit command, args, environment, working directory, and process-group policy. Use group termination when supported to avoid orphaned child processes. Do not forward untrusted browser input directly into a privileged shell.
 
 ## BrowserBridge
 

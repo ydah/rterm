@@ -12,6 +12,7 @@ module RTerm
         ExitStatus = Struct.new(:exitstatus, :termsig)
 
         CREATE_UNICODE_ENVIRONMENT = 0x00000400
+        CREATE_SUSPENDED = 0x00000004
         EXTENDED_STARTUPINFO_PRESENT = 0x00080000
         INFINITE = 0xffff_ffff
         PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE = 0x00020016
@@ -24,8 +25,10 @@ module RTerm
             extend Fiddle::Importer
             dlload "kernel32"
 
+            extern "int AssignProcessToJobObject(void*, void*)"
             extern "int CloseHandle(void*)"
             extern "void ClosePseudoConsole(void*)"
+            extern "void* CreateJobObjectW(void*, void*)"
             extern "int CreatePipe(void*, void*, void*, unsigned long)"
             extern "int CreateProcessW(void*, void*, void*, void*, int, unsigned long, void*, void*, void*, void*)"
             extern "int CreatePseudoConsole(int, void*, void*, unsigned long, void*)"
@@ -36,6 +39,8 @@ module RTerm
             extern "int PeekNamedPipe(void*, void*, unsigned long, void*, void*, void*)"
             extern "int ReadFile(void*, void*, unsigned long, void*, void*)"
             extern "int ResizePseudoConsole(void*, int)"
+            extern "unsigned long ResumeThread(void*)"
+            extern "int TerminateJobObject(void*, unsigned int)"
             extern "int TerminateProcess(void*, unsigned int)"
             extern "int UpdateProcThreadAttribute(void*, unsigned long, size_t, void*, size_t, void*, void*)"
             extern "unsigned long WaitForSingleObject(void*, unsigned long)"
@@ -162,6 +167,7 @@ module RTerm
           @cols = cols
           @rows = rows
           @hpc = nil
+          @job_handle = nil
           @process_handle = nil
           @closed = false
           spawn
@@ -173,10 +179,16 @@ module RTerm
           Kernel32.ResizePseudoConsole(@hpc, coord(cols, rows)).zero?
         end
 
-        def terminate(exit_code = 1)
+        def terminate(exit_code = 1, tree: true)
           return false if @process_handle.nil?
 
+          return true if tree && terminate_job(exit_code)
+
           Kernel32.TerminateProcess(@process_handle, exit_code).zero? == false
+        end
+
+        def process_tree_enabled?
+          !@job_handle.nil?
         end
 
         def wait
@@ -190,6 +202,7 @@ module RTerm
 
           ExitStatus.new(code_pointer.unpack1("L<"), nil)
         ensure
+          close_job_handle
           close_process_handle
         end
 
@@ -200,6 +213,7 @@ module RTerm
           @stdin&.close unless @stdin&.closed?
           @stdout&.close unless @stdout&.closed?
           close_pseudo_console
+          close_job_handle
           true
         rescue IOError
           false
@@ -228,6 +242,7 @@ module RTerm
           close_handle(output_read)
           close_handle(output_write)
           close_pseudo_console
+          close_job_handle
           close_process_handle
           raise
         end
@@ -255,7 +270,7 @@ module RTerm
           command_line = wide_string(command_line_string)
           cwd = @cwd ? wide_string(@cwd) : nil
           env_block = environment_block
-          flags = EXTENDED_STARTUPINFO_PRESENT
+          flags = EXTENDED_STARTUPINFO_PRESENT | CREATE_SUSPENDED
           flags |= CREATE_UNICODE_ENVIRONMENT if env_block
           process_attributes = security_attributes
           thread_attributes = security_attributes
@@ -274,9 +289,32 @@ module RTerm
           )
           raise last_error("CreateProcessW") if result.zero?
 
-          parse_process_information(process_information)
+          thread_handle = parse_process_information(process_information)
+          assign_process_to_job
+          resume_thread(thread_handle)
         ensure
+          close_handle(thread_handle)
           Kernel32.DeleteProcThreadAttributeList(attribute_list) if attribute_list
+        end
+
+        def create_job_object
+          handle = Kernel32.CreateJobObjectW(nil, nil)
+          @job_handle = normalize_handle(handle)
+          @job_handle = nil if @job_handle.zero?
+        end
+
+        def assign_process_to_job
+          create_job_object unless @job_handle
+          return false if @job_handle.nil? || @process_handle.nil?
+
+          return true if Kernel32.AssignProcessToJobObject(@job_handle, @process_handle).nonzero?
+
+          close_job_handle
+          false
+        end
+
+        def resume_thread(thread_handle)
+          raise last_error("ResumeThread") if Kernel32.ResumeThread(thread_handle) == 0xffff_ffff
         end
 
         def build_attribute_list
@@ -316,7 +354,7 @@ module RTerm
           @process_handle = process_information.byteslice(0, pointer_size).unpack1(pointer_pack)
           thread_handle = process_information.byteslice(pointer_size, pointer_size).unpack1(pointer_pack)
           @pid = process_information.byteslice(pointer_size * 2, 4).unpack1("L<")
-          close_handle(thread_handle)
+          thread_handle
         end
 
         def command_line_string
@@ -417,6 +455,12 @@ module RTerm
           Kernel32.CloseHandle(handle)
         end
 
+        def terminate_job(exit_code)
+          return false if @job_handle.nil?
+
+          Kernel32.TerminateJobObject(@job_handle, exit_code).nonzero?
+        end
+
         def close_pseudo_console
           return if @hpc.nil?
 
@@ -429,6 +473,17 @@ module RTerm
 
           close_handle(@process_handle)
           @process_handle = nil
+        end
+
+        def close_job_handle
+          return if @job_handle.nil?
+
+          close_handle(@job_handle)
+          @job_handle = nil
+        end
+
+        def normalize_handle(handle)
+          handle.respond_to?(:to_i) ? handle.to_i : handle
         end
 
         def last_error(function)

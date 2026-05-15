@@ -107,7 +107,7 @@ module RTerm
       end
 
       def kill(signal = :TERM, group: false)
-        return @native_console.terminate if @native
+        return @native_console.terminate(1, tree: group) if @native
 
         target = group ? -@pid : @pid
         Process.kill(signal, target)
@@ -149,10 +149,14 @@ module RTerm
       end
 
       def process_group_enabled?
+        return @native_console.process_tree_enabled? if @native
+
         false
       end
 
       def process_group_id
+        return @pid if @native && process_group_enabled?
+
         nil
       end
 
