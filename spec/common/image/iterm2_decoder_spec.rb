@@ -124,7 +124,7 @@ RSpec.describe RTerm::Common::Iterm2Decoder do
     image = {
       protocol: :iterm2,
       attributes: { "inline" => "1" },
-      data: [lossless_jpeg_bytes].pack("m0")
+      data: [sampled_lossless_jpeg_bytes].pack("m0")
     }
 
     decoded = described_class.decode(image)
@@ -205,10 +205,10 @@ RSpec.describe RTerm::Common::Iterm2Decoder do
     ].join
   end
 
-  def lossless_jpeg_bytes
+  def sampled_lossless_jpeg_bytes
     [
       "\xff\xd8".b,
-      jpeg_segment(0xc3, [8, 1, 2, 1, 1, 0x11, 0].pack("CnnCCCC")),
+      jpeg_segment(0xc3, [8, 1, 2, 1, 1, 0x21, 0].pack("CnnCCCC")),
       jpeg_segment(0xc4, [0, 1, 1, *Array.new(14, 0), 0, 1].pack("C*")),
       jpeg_segment(0xda, [1, 1, 0, 1, 0, 0].pack("C*")),
       "\x5f".b,

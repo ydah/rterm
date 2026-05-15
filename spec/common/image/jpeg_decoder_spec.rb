@@ -60,6 +60,26 @@ RSpec.describe RTerm::Common::JpegDecoder do
     expect(decoded[:pixels]).to eq([[[128, 128, 128, 255], [129, 129, 129, 255]]])
   end
 
+  it "decodes sampled lossless grayscale JPEG pixels" do
+    decoded = described_class.decode(sampled_lossless_jpeg_bytes)
+
+    expect(decoded).to include(format: :rgba, media_type: :jpeg, width: 2, height: 1, lossless: true)
+    expect(decoded[:pixels]).to eq([[[128, 128, 128, 255], [129, 129, 129, 255]]])
+  end
+
+  it "decodes arithmetic JPEG conditioning metadata" do
+    decoded = described_class.decode(arithmetic_jpeg_bytes)
+
+    expect(decoded).to include(
+      format: :sampled,
+      media_type: :jpeg,
+      width: 2,
+      height: 1,
+      arithmetic: true,
+      conditioning: { dc: { 0 => 4 }, ac: { 0 => 2 } }
+    )
+  end
+
   it "returns nil for unsupported bytes" do
     expect(described_class.decode("not-jpeg")).to be_nil
   end
@@ -152,6 +172,26 @@ RSpec.describe RTerm::Common::JpegDecoder do
       jpeg_segment(0xc4, [0, 1, 1, *Array.new(14, 0), 0, 1].pack("C*")),
       jpeg_segment(0xda, [1, 1, 0, 1, 0, 0].pack("C*")),
       "\x5f".b,
+      "\xff\xd9".b
+    ].join
+  end
+
+  def sampled_lossless_jpeg_bytes
+    [
+      "\xff\xd8".b,
+      jpeg_segment(0xc3, [8, 1, 2, 1, 1, 0x21, 0].pack("CnnCCCC")),
+      jpeg_segment(0xc4, [0, 1, 1, *Array.new(14, 0), 0, 1].pack("C*")),
+      jpeg_segment(0xda, [1, 1, 0, 1, 0, 0].pack("C*")),
+      "\x5f".b,
+      "\xff\xd9".b
+    ].join
+  end
+
+  def arithmetic_jpeg_bytes
+    [
+      "\xff\xd8".b,
+      jpeg_segment(0xc9, [8, 1, 2, 1, 1, 0x11, 0].pack("CnnCCCC")),
+      jpeg_segment(0xcc, [0, 4, 0x10, 2].pack("C*")),
       "\xff\xd9".b
     ].join
   end

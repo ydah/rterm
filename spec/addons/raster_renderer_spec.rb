@@ -154,7 +154,7 @@ RSpec.describe RTerm::Addon::RasterRenderer do
     renderer = described_class.new(cell_width: 4, cell_height: 4, draw_cursor: false)
 
     terminal.load_addon(renderer)
-    terminal.write("\e]1337;File=name=test.jpg;inline=1;width=2;height=1:#{[lossless_jpeg_bytes].pack("m0")}\a")
+    terminal.write("\e]1337;File=name=test.jpg;inline=1;width=2;height=1:#{[sampled_lossless_jpeg_bytes].pack("m0")}\a")
 
     expect(renderer.frame[:images].last).to include(protocol: :iterm2, format: :rgba, media_type: :jpeg)
     expect(renderer.pixelAt(1, 1)).to eq([128, 128, 128, 255])
@@ -244,10 +244,10 @@ RSpec.describe RTerm::Addon::RasterRenderer do
     ].join
   end
 
-  def lossless_jpeg_bytes
+  def sampled_lossless_jpeg_bytes
     [
       "\xff\xd8".b,
-      jpeg_segment(0xc3, [8, 1, 2, 1, 1, 0x11, 0].pack("CnnCCCC")),
+      jpeg_segment(0xc3, [8, 1, 2, 1, 1, 0x21, 0].pack("CnnCCCC")),
       jpeg_segment(0xc4, [0, 1, 1, *Array.new(14, 0), 0, 1].pack("C*")),
       jpeg_segment(0xda, [1, 1, 0, 1, 0, 0].pack("C*")),
       "\x5f".b,

@@ -38,6 +38,7 @@ module RTerm
         @progressive_blocks = nil
         @eob_run = 0
         @adobe_transform = nil
+        @arithmetic_conditioning = { dc: {}, ac: {} }
       end
 
       def decode
@@ -75,6 +76,8 @@ module RTerm
           parse_quantization(payload)
         elsif marker == 0xc4
           parse_huffman(payload)
+        elsif marker == 0xcc
+          parse_arithmetic_conditioning(payload)
         elsif marker == 0xee
           parse_adobe(payload)
         elsif SOF_MARKERS.include?(marker)
@@ -112,8 +115,10 @@ module RTerm
           precision: @precision,
           components: @components.length,
           color_space: color_space,
+          arithmetic: (true if arithmetic?),
+          conditioning: (conditioning_metadata if arithmetic?),
           lossless: (true if lossless?),
-          progressive: @frame_marker == 0xc2
+          progressive: progressive?
         }.merge(extra).compact
       end
 
@@ -158,6 +163,17 @@ module RTerm
           offset += counts.sum
           type = table_class.zero? ? :dc : :ac
           @huffman[type][table_id] = build_huffman(counts, symbols)
+        end
+      end
+
+      def parse_arithmetic_conditioning(payload)
+        offset = 0
+        while offset < payload.bytesize
+          info = payload.getbyte(offset)
+          value = payload.getbyte(offset + 1)
+          offset += 2
+          type = (info >> 4).zero? ? :dc : :ac
+          @arithmetic_conditioning[type][info & 0x0f] = value
         end
       end
 
@@ -218,22 +234,28 @@ module RTerm
       end
 
       def lossless?
-        @frame_marker == 0xc3
+        [0xc3, 0xcb].include?(@frame_marker)
       end
 
       def lossless_supported?
         lossless? &&
+          !arithmetic? &&
           supported_precision? &&
           supported_component_count? &&
-          @components.all? { |component| component[:h] == 1 && component[:v] == 1 }
+          @components.all? { |component| component[:h].positive? && component[:v].positive? }
       end
 
       def progressive?
-        @frame_marker == 0xc2
+        [0xc2, 0xca].include?(@frame_marker)
+      end
+
+      def arithmetic?
+        [0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf].include?(@frame_marker)
       end
 
       def progressive_supported?
         progressive? &&
+          !arithmetic? &&
           supported_precision? &&
           supported_component_count? &&
           @components.all? { |component| @quantization[component[:quantization_id]] }
@@ -474,26 +496,60 @@ module RTerm
 
       def decode_lossless_pixels(reader)
         planes = lossless_planes
-        @height.times do |y|
-          @width.times do |x|
-            @scan_components.each do |component|
-              table = @huffman[:dc][component[:dc_table] || 0]
-              raise ArgumentError, "missing JPEG Huffman table" unless table
-
-              diff_size = decode_huffman(reader, table)
-              diff = receive(reader, diff_size)
-              predicted = lossless_prediction(planes[component[:id]], x, y)
-              planes[component[:id]][y][x] = clamp_sample(predicted + diff)
-            end
-          end
-        end
+        @scan_components.length == 1 ? decode_lossless_component_scan(reader, planes) : decode_lossless_interleaved_scan(reader, planes)
         compose_pixels(normalize_planes(planes))
       end
 
       def lossless_planes
+        max_h = @components.map { |component| component[:h] }.max
+        max_v = @components.map { |component| component[:v] }.max
         @components.each_with_object({}) do |component, result|
-          result[component[:id]] = Array.new(@height) { Array.new(@width, nil) }
+          width = ((@width * component[:h]) + max_h - 1) / max_h
+          height = ((@height * component[:v]) + max_v - 1) / max_v
+          result[component[:id]] = Array.new(height) { Array.new(width, nil) }
         end
+      end
+
+      def decode_lossless_component_scan(reader, planes)
+        component = @scan_components.first
+        plane = planes.fetch(component[:id])
+        plane.each_index do |y|
+          plane[y].each_index do |x|
+            decode_lossless_sample(reader, component, plane, x, y)
+          end
+        end
+      end
+
+      def decode_lossless_interleaved_scan(reader, planes)
+        max_h = @components.map { |component| component[:h] }.max
+        max_v = @components.map { |component| component[:v] }.max
+        mcu_cols = (@width + max_h - 1) / max_h
+        mcu_rows = (@height + max_v - 1) / max_v
+
+        mcu_rows.times do |mcu_y|
+          mcu_cols.times do |mcu_x|
+            @scan_components.each do |component|
+              component[:v].times do |vertical|
+                component[:h].times do |horizontal|
+                  plane = planes.fetch(component[:id])
+                  x = (mcu_x * component[:h]) + horizontal
+                  y = (mcu_y * component[:v]) + vertical
+                  decode_lossless_sample(reader, component, plane, x, y) if plane[y] && x < plane[y].length
+                end
+              end
+            end
+          end
+        end
+      end
+
+      def decode_lossless_sample(reader, component, plane, x, y)
+        table = @huffman[:dc][component[:dc_table] || 0]
+        raise ArgumentError, "missing JPEG Huffman table" unless table
+
+        diff_size = decode_huffman(reader, table)
+        diff = receive(reader, diff_size)
+        predicted = lossless_prediction(plane, x, y)
+        plane[y][x] = clamp_sample(predicted + diff)
       end
 
       def lossless_prediction(plane, x, y)
@@ -522,7 +578,13 @@ module RTerm
 
       def normalize_planes(planes)
         planes.transform_values do |plane|
-          plane.map { |row| row.map { |value| normalize_sample(value << @successive_low) } }
+          plane.map do |row|
+            row.map do |value|
+              raise ArgumentError, "truncated JPEG lossless scan" if value.nil?
+
+              normalize_sample(value << @successive_low)
+            end
+          end
         end
       end
 
@@ -731,6 +793,10 @@ module RTerm
 
       def ycck_transform?
         @adobe_transform == 2
+      end
+
+      def conditioning_metadata
+        @arithmetic_conditioning.transform_values(&:dup)
       end
 
       def sample_center
