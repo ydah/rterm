@@ -37,3 +37,18 @@ jobs:
         run: bundle exec rake
       - name: Verify package contents
         run: bundle exec rake package:verify_contents
+
+  windows:
+    runs-on: windows-latest
+    name: Windows PTY smoke
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.4'
+          bundler-cache: true
+      - name: Run Windows PTY specs
+        run: bundle exec rspec spec/pty/conpty_spec.rb

@@ -205,4 +205,25 @@ RSpec.describe RTerm::ConPTY do
   ensure
     backend&.close
   end
+
+  it "spawns the default backend on Windows" do
+    skip "Windows-only default backend smoke" unless Gem.win_platform?
+
+    conpty = described_class.new(
+      command: Gem.ruby,
+      args: ["-e", "STDOUT.write('ready'); STDOUT.flush"]
+    )
+    output = nil
+    deadline = Time.now + 2
+
+    until output || Time.now >= deadline
+      output = conpty.read
+      sleep 0.01 unless output
+    end
+
+    expect(output).to eq("ready")
+    expect(conpty.wait_for_exit(2)).to eq(0)
+  ensure
+    conpty&.close
+  end
 end
