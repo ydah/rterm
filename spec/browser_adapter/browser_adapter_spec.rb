@@ -11,10 +11,16 @@ RSpec.describe RTerm::BrowserAdapter do
     expect(js).to include("ResizeObserver")
     expect(js).to include("navigator.clipboard")
     expect(js).to include("FontFace")
+    expect(js).to include("selection_change")
+    expect(js).to include("context_menu")
+    expect(js).to include("linkactivate")
+    expect(js).to include("renderRaster")
     expect(js).to include("createProgram")
     expect(js).to include("texture2D")
     expect(css).to include(".rterm-browser")
     expect(css).to include(".rterm-browser-webgl")
+    expect(css).to include(".rterm-browser-cell.is-selected")
+    expect(css).to include(".rterm-browser-cell.is-cursor")
   end
 
   it "returns concrete asset paths and rejects unknown assets" do

@@ -49,6 +49,8 @@ module RTerm
         bg = resolve_color(cell.bg, default: @background)
         fg = bold_bright_color(cell, fg, options)
         bg = @theme.background if bg == "transparent" && !options[:allow_transparency]
+        fg, bg = bg, fg if cell.inverse?
+        fg = dim_color(fg, bg) if cell.dim?
         fg = contrast_color(fg, bg, options.fetch(:minimum_contrast_ratio, 1).to_f)
         { foreground: fg, background: bg }
       end
@@ -90,17 +92,33 @@ module RTerm
         black_ratio > white_ratio ? "#000000" : "#ffffff"
       end
 
+      def dim_color(foreground_color, background_color)
+        return foreground_color unless hex_color?(foreground_color) && hex_color?(background_color)
+
+        foreground = rgb_channels(foreground_color)
+        background = rgb_channels(background_color)
+        rgb_to_hex(
+          ((foreground[0] * 0.65) + (background[0] * 0.35)).round,
+          ((foreground[1] * 0.65) + (background[1] * 0.35)).round,
+          ((foreground[2] * 0.65) + (background[2] * 0.35)).round
+        )
+      end
+
       def contrast_ratio(a, b)
         dark, light = [relative_luminance(a), relative_luminance(b)].sort
         (light + 0.05) / (dark + 0.05)
       end
 
       def relative_luminance(color)
-        rgb = color.delete_prefix("#").scan(/../).map { |part| part.to_i(16) / 255.0 }
+        rgb = rgb_channels(color).map { |part| part / 255.0 }
         channels = rgb.map do |value|
           value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055)**2.4
         end
         (0.2126 * channels[0]) + (0.7152 * channels[1]) + (0.0722 * channels[2])
+      end
+
+      def rgb_channels(color)
+        color.delete_prefix("#").scan(/../).map { |part| part.to_i(16) }
       end
 
       def hex_color?(value)

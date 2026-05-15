@@ -190,6 +190,9 @@ module RTerm
         when :composition_update then @terminal.composition_update(text_value(data))
         when :composition_end then @terminal.composition_end(text_value(data), commit: data.fetch(:commit, true))
         when :context_menu then @terminal.context_menu_event(data)
+        when :selection then update_selection(data)
+        when :clear_selection then @terminal.clear_selection
+        when :copy then @terminal.copy(data.key?(:data) || data.key?(:text) ? text_value(data) : nil)
         when :scroll then scroll_terminal(data)
         when :render then request_render(start_row: data.fetch(:start, 0), end_row: data[:end])
         when :renderer_context_loss then command(:renderer_context_loss, data)
@@ -233,6 +236,66 @@ module RTerm
         return @terminal.scroll_to_line(number_value(data, :line, :row)) if data.key?(:line) || data.key?(:row)
 
         @terminal.scroll_lines(number_value(data, :amount, :delta_y))
+      end
+
+      def update_selection(data)
+        mode = normalize_key(data[:mode] || data[:selection_mode] || data[:action] || :linear)
+        case mode
+        when :clear
+          @terminal.clear_selection
+        when :all
+          @terminal.select_all(buffer: (data[:buffer] || :active).to_sym)
+        when :word
+          @terminal.select_word(number_value(data, :col, :column, :x), number_value(data, :row, :y))
+        when :url
+          @terminal.select_url(number_value(data, :col, :column, :x), number_value(data, :row, :y))
+        when :line
+          @terminal.select_line(number_value(data, :row, :y), include_wrapped: data.fetch(:include_wrapped, true))
+        when :rectangle
+          @terminal.select_rectangle(
+            number_value(data, :start_col, :start_column, :col, :x),
+            number_value(data, :start_row, :row, :y),
+            number_value(data, :end_col, :end_column),
+            number_value(data, :end_row)
+          )
+        when :click
+          @terminal.select_click(
+            number_value(data, :col, :column, :x),
+            number_value(data, :row, :y),
+            click_count: number_value(data, :click_count, :detail),
+            button: (data[:button] || :left).to_sym
+          )
+        else
+          start_col = number_value(data, :start_col, :start_column, :col, :x)
+          start_row = number_value(data, :start_row, :row, :y)
+          end_col = optional_number(data, :end_col, :end_column)
+          end_row = optional_number(data, :end_row)
+          length = optional_number(data, :length)
+          length ||= selection_length(start_col, start_row, end_col || start_col, end_row || start_row)
+          @terminal.select(start_col, start_row, length)
+        end
+      end
+
+      def selection_length(start_col, start_row, end_col, end_row)
+        start_col = start_col.to_i
+        start_row = start_row.to_i
+        end_col = end_col.to_i
+        end_row = end_row.to_i
+        start_col, end_col = [start_col, end_col].minmax if start_row == end_row
+        if end_row < start_row
+          start_col, start_row, end_col, end_row = end_col, end_row, start_col, start_row
+        end
+
+        return [(end_col - start_col).abs + 1, 1].max if start_row == end_row
+
+        rows = @terminal.send(:visible_rows)
+        first_row = [row_trimmed_length(rows, start_row) - start_col, 0].max
+        middle_rows = ((start_row + 1)...end_row).sum { |row| row_trimmed_length(rows, row) }
+        first_row + middle_rows + [end_col + 1, row_trimmed_length(rows, end_row)].min
+      end
+
+      def row_trimmed_length(rows, row)
+        rows[row]&.fetch(:line, nil)&.get_trimmed_length.to_i
       end
 
       def command(type, payload = {})

@@ -39,4 +39,16 @@ RSpec.describe RTerm::Common::ColorManager do
     expect(manager.background).to eq("#111111")
     expect(manager.cursor).to eq("#00ff00")
   end
+
+  it "resolves inverse and dim cell attributes" do
+    manager = described_class.new(RTerm::Theme.new(foreground: "#ffffff", background: "#000000"))
+    inverse = RTerm::Common::CellData.new
+    dim = RTerm::Common::CellData.new
+
+    inverse.inverse = true
+    dim.dim = true
+
+    expect(manager.resolve_cell_colors(inverse)).to eq(foreground: "#000000", background: "#ffffff")
+    expect(manager.resolve_cell_colors(dim)).to eq(foreground: "#a6a6a6", background: "#000000")
+  end
 end

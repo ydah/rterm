@@ -61,6 +61,10 @@ RSpec.describe "terminal selection API" do
     terminal.select_word(5, 0)
 
     expect(terminal.selection).to eq("def")
+    expect(terminal.getSelectionPosition).to eq(
+      start: { x: 4, y: 0 },
+      end: { x: 7, y: 0 }
+    )
   end
 
   it "uses double-click and triple-click selection boundaries" do
@@ -96,6 +100,10 @@ RSpec.describe "terminal selection API" do
     terminal.select_rectangle(1, 0, 2, 1)
 
     expect(terminal.selection).to eq("bc\r\nfg")
+    expect(terminal.getSelectionPosition).to eq(
+      start: { x: 1, y: 0 },
+      end: { x: 3, y: 1 }
+    )
   end
 
   it "keeps rectangular selection aligned around wide-character boundaries" do

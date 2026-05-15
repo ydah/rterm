@@ -1481,11 +1481,27 @@ module RTerm
     # @return [Hash, nil]
     def get_selection_position
       return nil unless @selection
-      return nil unless @selection[:type] == :linear
 
       rows = visible_rows
       return nil if rows.empty?
 
+      case @selection[:type]
+      when :linear
+        linear_selection_position(rows)
+      when :rectangle
+        rectangle_selection_position(rows)
+      when :line
+        line_selection_position(rows)
+      when :lines
+        lines_selection_position(rows)
+      when :word
+        word_selection_position(rows)
+      else
+        nil
+      end
+    end
+
+    def linear_selection_position(rows)
       row = @selection[:row].to_i
       col = @selection[:column].to_i
       length = @selection[:length].to_i
@@ -1515,6 +1531,59 @@ module RTerm
       end
 
       { start: { x: col, y: row }, end: { x: end_col, y: end_row } }
+    end
+
+    def rectangle_selection_position(rows)
+      start_row, end_row = [@selection[:start_row].to_i, @selection[:end_row].to_i].minmax
+      start_col, end_col = [@selection[:start_column].to_i, @selection[:end_column].to_i].minmax
+      max_row = rows.length - 1
+      return nil if max_row.negative?
+
+      {
+        start: { x: [start_col, 0].max, y: [[start_row, 0].max, max_row].min },
+        end: { x: [end_col, 0].max + 1, y: [[end_row, 0].max, max_row].min }
+      }
+    end
+
+    def line_selection_position(rows)
+      row = [[@selection[:row].to_i, 0].max, rows.length - 1].min
+      line = rows[row]&.fetch(:line, nil)
+      return nil unless line
+
+      { start: { x: 0, y: row }, end: { x: line.get_trimmed_length, y: row } }
+    end
+
+    def lines_selection_position(rows)
+      start_row = [[@selection[:start_row].to_i, 0].max, rows.length - 1].min
+      end_row = [[@selection[:end_row].to_i, 0].max, rows.length - 1].min
+      start_row, end_row = [start_row, end_row].minmax
+      end_line = rows[end_row]&.fetch(:line, nil)
+      return nil unless end_line
+
+      { start: { x: 0, y: start_row }, end: { x: end_line.get_trimmed_length, y: end_row } }
+    end
+
+    def word_selection_position(rows)
+      row = [[@selection[:row].to_i, 0].max, rows.length - 1].min
+      col = [@selection[:column].to_i, 0].max
+      row_info = rows[row]
+      return nil unless row_info
+
+      segments = line_segments(row_info[:line])
+      target = segments.find_index { |segment| col >= segment[:start_col] && col < segment[:end_col] }
+      target ||= segments.length - 1 if segments.any? && col >= segments.last[:end_col]
+      return nil unless target
+
+      separators = options.word_separator.to_s.each_char.to_a
+      return nil if separators.include?(segments[target][:text])
+
+      first = target
+      first -= 1 while first.positive? && !separators.include?(segments[first - 1][:text])
+
+      last = target
+      last += 1 while last < segments.length - 1 && !separators.include?(segments[last + 1][:text])
+
+      { start: { x: segments[first][:start_col], y: row }, end: { x: segments[last][:end_col], y: row } }
     end
 
     # Clears the current selection.

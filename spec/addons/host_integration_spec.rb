@@ -52,6 +52,28 @@ RSpec.describe RTerm::Addon::HostIntegration do
     expect(composition.last).to include(data: "kana", committed: true)
   end
 
+  it "receives host selection and copy events" do
+    terminal = RTerm::Terminal.new(cols: 8, rows: 3)
+    addon = described_class.new
+    clipboard = []
+
+    terminal.on(:clipboard) { |payload| clipboard << payload }
+    terminal.load_addon(addon)
+    terminal.write("abcdef\r\nghijkl")
+
+    addon.receive(type: :selection, mode: :linear, startCol: 2, startRow: 0, endCol: 1, endRow: 1)
+    expect(terminal.selection).to eq("cdef\r\ngh")
+
+    addon.receive(type: :selection, mode: :rectangle, startCol: 1, startRow: 0, endCol: 2, endRow: 1)
+    expect(terminal.selection).to eq("bc\r\nhi")
+
+    addon.receive(type: :copy)
+    expect(clipboard.last).to include(decoded: "bc\r\nhi", allowed: true)
+
+    addon.receive(type: :clearSelection)
+    expect(terminal.selection).to eq("")
+  end
+
   it "applies host resize and cell measurements" do
     terminal = RTerm::Terminal.new(cols: 4, rows: 2)
     addon = described_class.new

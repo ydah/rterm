@@ -11,7 +11,7 @@ application.
 - OSC/DCS support for hyperlinks, clipboard policy hooks, Sixel, iTerm2 images, progress, colors, and window operations.
 - PTY helpers for interactive processes, cwd/env, stdin close, pause/resume, process groups, and exit lifecycle.
 - BrowserBridge protocol for WebSocket sessions with resume, attach policies, rate limits, heartbeats, origin checks, and binary frames.
-- Browser adapter assets for DOM rendering, input, clipboard, font measurement, resize observation, and renderer lifecycle events.
+- Browser adapter assets for DOM/WebGL rendering, selection, input, clipboard, font measurement, resize observation, and renderer lifecycle events.
 - Rendering helpers for headless element trees, RGBA raster frames, renderer lifecycle state, and image decoding.
 - Addon APIs for search, serialization, clipboard, links, fonts, Unicode widths, ligatures, and renderer integrations.
 
@@ -261,7 +261,7 @@ end
 | `WebFonts` | Register font faces, resolve fallback families, estimate cells, expose CSS, and trigger relayout events. |
 | `HostIntegration` | Bridge host mount, input, clipboard, font measurement, renderer, and accessibility events. |
 | `ScreenRenderer`, `HtmlRenderer`, `RasterRenderer` | Produce headless render trees, HTML/ARIA output, and RGBA frames. |
-| `Canvas`, `WebGL` | Track external renderer lifecycle and cache state; browser assets include a WebGL canvas renderer. |
+| `Canvas`, `WebGL` | Track external renderer lifecycle and cache state; browser assets include a WebGL canvas renderer with cursor, selection, and raster frame handling. |
 | `WebLinks` | Detect and activate links with provider hooks. |
 
 ## Platform Notes
