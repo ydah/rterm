@@ -52,7 +52,7 @@ module RTerm
             raise IOError, "closed stream" if closed?
 
             available = bytes_available
-            raise IO::WaitReadable if available.zero?
+            raise IO::EAGAINWaitReadable if available.zero?
 
             read_bytes([length.to_i, available].min)
           end
