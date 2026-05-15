@@ -4,7 +4,9 @@ require 'securerandom'
 require 'set'
 require_relative "../common/event_emitter"
 require_relative "../addons/host_integration/host_integration"
+require_relative "../addons/raster_renderer/raster_renderer"
 require_relative "../addons/screen_renderer/screen_renderer"
+require_relative "../addons/web_links/web_links"
 require_relative "../pty/pty"
 require_relative "../terminal_options"
 
@@ -21,6 +23,7 @@ module RTerm
                      output_queue_limit: 1_048_576, auto_flush_output: true,
                      max_message_bytes: nil, rate_limit: nil, heartbeat_timeout: nil,
                      attach_policy: :multiple,
+                     browser_renderer: nil, renderers: nil, raster: false,
                      clock: -> { Time.now })
         @sessions = {}
         @max_sessions = max_sessions
@@ -35,6 +38,7 @@ module RTerm
         @rate_limit = normalize_rate_limit(rate_limit)
         @heartbeat_timeout = heartbeat_timeout
         @attach_policy = attach_policy.to_sym
+        @browser_renderers = normalize_browser_renderers(browser_renderer || renderers, raster: raster)
         @clock = clock
         @output_callbacks = []
         @command_callbacks = []
@@ -67,6 +71,7 @@ module RTerm
           pty: pty,
           host_integration: nil,
           screen_renderer: nil,
+          raster_renderer: nil,
           created_at: now,
           last_activity_at: now,
           last_heartbeat_at: now,
@@ -74,7 +79,7 @@ module RTerm
           output_queue: [],
           queued_output_bytes: 0
         }
-        install_host_addons(session_id, @sessions[session_id])
+        install_host_addons(session_id, @sessions[session_id], session_options)
         wire_pty(session_id, terminal, pty) if pty
 
         session_id
@@ -379,6 +384,11 @@ module RTerm
         y
         col
         row
+        browser_renderer
+        renderers
+        raster
+        raster_renderer
+        screen_renderer
       ].freeze
 
       def get_session(session_id)
@@ -528,6 +538,7 @@ module RTerm
           'icon_name' => terminal.icon_name,
           'modes' => terminal.modes,
           'images' => terminal.images,
+          'renderers' => active_renderers(session),
           'host_commands' => session[:host_integration]&.commands&.last(20) || []
         }
       end
@@ -585,7 +596,7 @@ module RTerm
         @command_callbacks.dup.each { |callback| callback.call(session_id, command) }
       end
 
-      def install_host_addons(session_id, session)
+      def install_host_addons(session_id, session, session_options)
         host = RTerm::Addon::HostIntegration.new(
           auto_mount: true,
           transport: ->(command) { queue_host_command(session_id, command) if session_exists?(session_id) }
@@ -593,8 +604,46 @@ module RTerm
         screen = RTerm::Addon::ScreenRenderer.new
         session[:terminal].load_addon(host)
         session[:terminal].load_addon(screen)
+        session[:terminal].load_addon(RTerm::Addon::WebLinks.new)
         session[:host_integration] = host
         session[:screen_renderer] = screen
+        install_raster_renderer(session, session_options) if browser_renderers_for(session_options).include?(:raster)
+      end
+
+      def install_raster_renderer(session, session_options)
+        renderer = RTerm::Addon::RasterRenderer.new(
+          cell_width: session_options[:cell_width],
+          cell_height: session_options[:cell_height]
+        )
+        session[:terminal].load_addon(renderer)
+        session[:raster_renderer] = renderer
+      end
+
+      def active_renderers(session)
+        result = [:screen]
+        result << :raster if session[:raster_renderer]
+        result
+      end
+
+      def browser_renderers_for(session_options)
+        normalize_browser_renderers(
+          session_options[:browser_renderer] || session_options[:renderer] || session_options[:renderers],
+          raster: session_options[:raster] || session_options[:raster_renderer] || @browser_renderers.include?(:raster)
+        )
+      end
+
+      def normalize_browser_renderers(value, raster: false)
+        items = Array(value).flat_map { |item| item.to_s.split(/[,\s]+/) }
+        items << "raster" if truthy?(raster)
+        items = ["screen"] if items.empty?
+        normalized = items.map { |item| normalize_terminal_option_key(item) }
+        normalized << :screen
+        normalized << :raster if (normalized & %i[all both hybrid]).any?
+        normalized.uniq & %i[screen raster]
+      end
+
+      def truthy?(value)
+        value == true || value.to_s == "true" || value.to_s == "1"
       end
 
       def measure_cell(session, width, height)

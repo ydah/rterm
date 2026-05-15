@@ -726,6 +726,66 @@ module RTerm
       deregister_link_matcher(id)
     end
 
+    # Finds renderer-facing links on visible rows.
+    # @param row [Integer, nil] optional visible row filter
+    # @return [Array<Hash>]
+    def links(row: nil)
+      require_relative "addons/web_links/web_links" unless defined?(RTerm::Addon::WebLinks)
+      web_links_addon.find_links(row: row)
+    end
+
+    # CamelCase alias.
+    def findLinks(row = nil)
+      links(row: row)
+    end
+
+    # Finds a link at a visible cell position.
+    # @param row [Integer]
+    # @param col [Integer]
+    # @return [Hash, nil]
+    def link_at(row, col)
+      require_relative "addons/web_links/web_links" unless defined?(RTerm::Addon::WebLinks)
+      web_links_addon.link_at(row.to_i, col.to_i)
+    end
+
+    # CamelCase alias.
+    def linkAt(row, col)
+      link_at(row, col)
+    end
+
+    # Activates a link by hash, index, visible cell position, or URI.
+    # @return [Boolean]
+    def open_link(link_or_index = nil, row: nil, col: nil, uri: nil)
+      require_relative "addons/web_links/web_links" unless defined?(RTerm::Addon::WebLinks)
+      target = link_or_index || link_target(row: row, col: col, uri: uri)
+      web_links_addon.open_link(target)
+    end
+
+    # CamelCase alias.
+    def openLink(link_or_index = nil, row: nil, col: nil, uri: nil)
+      open_link(link_or_index, row: row, col: col, uri: uri)
+    end
+
+    # Emits link hover lifecycle by hash, index, visible cell position, or URI.
+    # @return [Boolean]
+    def hover_link(link_or_index = nil, row: nil, col: nil, uri: nil)
+      require_relative "addons/web_links/web_links" unless defined?(RTerm::Addon::WebLinks)
+      target = link_or_index || link_target(row: row, col: col, uri: uri)
+      web_links_addon.hover_link(target, row: row, col: col)
+    end
+
+    # Emits link leave lifecycle by hash, index, visible cell position, or URI.
+    # @return [Boolean]
+    def leave_link(link_or_index = nil, row: nil, col: nil, uri: nil)
+      require_relative "addons/web_links/web_links" unless defined?(RTerm::Addon::WebLinks)
+      target = link_or_index || link_target(row: row, col: col, uri: uri)
+      web_links_addon.leave_link(target, row: row, col: col)
+    end
+
+    alias activate_link open_link
+    alias hoverLink hover_link
+    alias leaveLink leave_link
+
     # Registers marker decorations.
     def register_decoration(marker_or_options = nil, options = nil)
       normalized_options = {}
@@ -2128,6 +2188,13 @@ module RTerm
         else callback.call(nil, link[:url], link)
         end
       end
+    end
+
+    def link_target(row:, col:, uri:)
+      return link_at(row, col) if !row.nil? && !col.nil?
+      return nil if uri.to_s.empty?
+
+      { url: uri.to_s, text: uri.to_s, row: row.to_i, col: col.to_i, ranges: [] }
     end
 
     def selection_change_payload

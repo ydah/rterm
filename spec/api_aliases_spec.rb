@@ -735,6 +735,24 @@ RSpec.describe "specification APIs" do
     expect(addon.find_links).to include(hash_including(url: "https://example.local/custom"))
   end
 
+  it "supports link lifecycle helpers" do
+    terminal = RTerm::Terminal.new(cols: 40, rows: 2)
+    events = []
+
+    terminal.on(:web_link) { |payload| events << [payload[:action], payload[:link][:url]] }
+    terminal.write("open https://example.com")
+
+    expect(terminal.linkAt(0, 8)).to include(url: "https://example.com")
+    expect(terminal.hoverLink(row: 0, col: 8)).to be true
+    expect(terminal.openLink(row: 0, col: 8)).to be true
+    expect(terminal.leaveLink(uri: "https://example.com")).to be true
+    expect(events).to include(
+      [:hover, "https://example.com"],
+      [:activate, "https://example.com"],
+      [:leave, "https://example.com"]
+    )
+  end
+
   it "supports registerLinkMatcher API" do
     terminal = RTerm::Terminal.new
     activated = []

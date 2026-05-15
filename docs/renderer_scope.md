@@ -21,7 +21,9 @@ Use `RTerm::Addon::RasterRenderer` when a Ruby-side pixel frame is needed. It re
 
 Use `RTerm::Addon::HostIntegration` when a browser or native layer needs a stable command stream. It forwards mount, input, clipboard, font measurement, renderer, accessibility, and resize events, and it accepts host-originated key, mouse, paste, composition, viewport, and clipboard responses.
 
-Use `RTerm::BrowserAdapter` to serve the bundled browser-side JavaScript and CSS. The adapter connects to BrowserBridge WebSockets, renders `screen` commands into DOM rows and cells or an optional WebGL canvas, applies cursor and selection state, handles raster frames, forwards keyboard, pointer, selection, paste, composition, clipboard, context menu, and resize events, measures character cells with browser layout, loads registered web fonts, and reports WebGL context lifecycle events.
+Use `RTerm::BrowserAdapter` to serve the bundled browser-side JavaScript and CSS. The adapter connects to BrowserBridge WebSockets, renders `screen` commands into DOM rows and cells or an optional WebGL canvas, applies cursor, links, and selection state, handles raster frames when requested, forwards keyboard, pointer, link, selection, paste, composition, clipboard, context menu, and resize events, measures character cells with browser layout, loads registered web fonts, and reports WebGL context lifecycle events.
+
+BrowserBridge sessions always expose screen rendering and link metadata. Set `renderer: "raster"`, `renderers: ["screen", "raster"]`, or `raster: true` when creating a browser session to add raster frame commands for pixel-oriented clients.
 
 Renderer integrations can keep their host-side state in `RTerm::Addon::Canvas` or `RTerm::Addon::WebGL` with:
 

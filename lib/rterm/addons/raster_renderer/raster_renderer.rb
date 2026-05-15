@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../renderer_lifecycle"
+require_relative "../../common/image/iterm2_decoder"
 require_relative "../../common/image/sixel_decoder"
 
 module RTerm
@@ -192,9 +193,13 @@ module RTerm
           next if row >= @terminal.rows || (row + image_rows(image)) <= 0
 
           decoded = decode_image(image)
-          next unless decoded && decoded[:format] == :indexed_rgba
+          next unless decoded
 
-          compose_indexed_image(decoded, col * @cell_width, row * @cell_height, image)
+          if decoded[:format] == :indexed_rgba
+            compose_indexed_image(decoded, col * @cell_width, row * @cell_height, image)
+          elsif decoded[:format] == :binary
+            compose_binary_image_preview(decoded, col * @cell_width, row * @cell_height, image)
+          end
         end
       end
 
@@ -225,10 +230,30 @@ module RTerm
         }
       end
 
+      def compose_binary_image_preview(decoded, x, y, source)
+        target_width = [image_cols(source) * @cell_width, @cell_width].max
+        target_height = [image_rows(source) * @cell_height, @cell_height].max
+        color = preview_color(decoded[:bytes].to_s)
+        fill_rect(x, y, target_width, target_height, color)
+        outline_rect(x, y, target_width, target_height, [255, 255, 255, 180])
+        @frame[:images] << {
+          protocol: source[:protocol],
+          format: decoded[:format],
+          name: decoded[:name],
+          byte_size: decoded[:byte_size],
+          x: x,
+          y: y,
+          width: target_width,
+          height: target_height
+        }.compact
+      end
+
       def decode_image(image)
         case image[:protocol]
         when :sixel
           Common::SixelDecoder.decode(image)
+        when :iterm2
+          Common::Iterm2Decoder.decode(image)
         else
           nil
         end
@@ -257,6 +282,27 @@ module RTerm
             set_pixel(x + col_offset, y + row_offset, color)
           end
         end
+      end
+
+      def outline_rect(x, y, width, height, color)
+        width.times do |col_offset|
+          set_pixel(x + col_offset, y, color)
+          set_pixel(x + col_offset, y + height - 1, color)
+        end
+        height.times do |row_offset|
+          set_pixel(x, y + row_offset, color)
+          set_pixel(x + width - 1, y + row_offset, color)
+        end
+      end
+
+      def preview_color(bytes)
+        checksum = bytes.bytes.sum
+        [
+          64 + (checksum % 128),
+          64 + ((checksum / 3) % 128),
+          64 + ((checksum / 7) % 128),
+          220
+        ]
       end
 
       def set_pixel(x, y, color)

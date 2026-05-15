@@ -190,6 +190,9 @@ module RTerm
         when :composition_update then @terminal.composition_update(text_value(data))
         when :composition_end then @terminal.composition_end(text_value(data), commit: data.fetch(:commit, true))
         when :context_menu then @terminal.context_menu_event(data)
+        when :link_activate then handle_link_event(:activate, data)
+        when :link_hover then handle_link_event(:hover, data)
+        when :link_leave then handle_link_event(:leave, data)
         when :selection then update_selection(data)
         when :clear_selection then @terminal.clear_selection
         when :copy then @terminal.copy(data.key?(:data) || data.key?(:text) ? text_value(data) : nil)
@@ -236,6 +239,20 @@ module RTerm
         return @terminal.scroll_to_line(number_value(data, :line, :row)) if data.key?(:line) || data.key?(:row)
 
         @terminal.scroll_lines(number_value(data, :amount, :delta_y))
+      end
+
+      def handle_link_event(action, data)
+        options = {
+          row: optional_number(data, :row, :y),
+          col: optional_number(data, :col, :x),
+          uri: data[:uri] || data[:url]
+        }
+
+        case action
+        when :activate then @terminal.open_link(row: options[:row], col: options[:col], uri: options[:uri])
+        when :hover then @terminal.hover_link(row: options[:row], col: options[:col], uri: options[:uri])
+        when :leave then @terminal.leave_link(row: options[:row], col: options[:col], uri: options[:uri])
+        end
       end
 
       def update_selection(data)

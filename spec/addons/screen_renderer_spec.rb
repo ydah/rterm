@@ -48,4 +48,17 @@ RSpec.describe RTerm::Addon::ScreenRenderer do
     expect(host.children.first.children.length).to eq(3)
     expect(host.children.first.textContent).to eq("abc")
   end
+
+  it "annotates rendered link cells" do
+    terminal = RTerm::Terminal.new(cols: 28, rows: 1)
+    renderer = described_class.new
+
+    terminal.load_addon(renderer)
+    terminal.write("open https://example.com")
+
+    link_cells = renderer.rows.first[:cells].select { |cell| cell[:link] }
+
+    expect(link_cells.first[:link]).to include(uri: "https://example.com")
+    expect(link_cells.map { |cell| cell[:col] }).to include(5, 23)
+  end
 end

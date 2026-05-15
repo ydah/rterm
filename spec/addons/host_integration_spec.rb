@@ -74,6 +74,26 @@ RSpec.describe RTerm::Addon::HostIntegration do
     expect(terminal.selection).to eq("")
   end
 
+  it "receives host link lifecycle events" do
+    terminal = RTerm::Terminal.new(cols: 40, rows: 2)
+    addon = described_class.new
+    events = []
+
+    terminal.on(:web_link) { |payload| events << [payload[:action], payload[:link][:url]] }
+    terminal.load_addon(addon)
+    terminal.write("open https://example.com")
+
+    addon.receive(type: :linkHover, row: 0, col: 8)
+    addon.receive(type: :linkActivate, row: 0, col: 8)
+    addon.receive(type: :linkLeave, uri: "https://example.com")
+
+    expect(events).to include(
+      [:hover, "https://example.com"],
+      [:activate, "https://example.com"],
+      [:leave, "https://example.com"]
+    )
+  end
+
   it "applies host resize and cell measurements" do
     terminal = RTerm::Terminal.new(cols: 4, rows: 2)
     addon = described_class.new

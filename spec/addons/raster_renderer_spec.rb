@@ -39,4 +39,24 @@ RSpec.describe RTerm::Addon::RasterRenderer do
     expect(renderer.frame[:images].last).to include(protocol: :sixel, x: 0, y: 0, width: 2, height: 2)
     expect(renderer.pixelAt(0, 1)).to eq([255, 0, 0, 255])
   end
+
+  it "composes iTerm2 image previews into the raster frame" do
+    terminal = RTerm::Terminal.new(cols: 3, rows: 2)
+    renderer = described_class.new(cell_width: 4, cell_height: 4, draw_cursor: false)
+
+    terminal.load_addon(renderer)
+    terminal.write("\e]1337;File=name=test.png;inline=1;width=2;height=1:#{["PNG"].pack("m0")}\a")
+
+    expect(renderer.frame[:images].last).to include(
+      protocol: :iterm2,
+      format: :binary,
+      name: "test.png",
+      byte_size: 3,
+      x: 0,
+      y: 0,
+      width: 8,
+      height: 4
+    )
+    expect(renderer.pixelAt(1, 1)).not_to eq([0, 0, 0, 255])
+  end
 end

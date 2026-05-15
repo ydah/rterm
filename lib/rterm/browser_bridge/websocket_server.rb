@@ -21,6 +21,9 @@ module RTerm
         :heartbeat_timeout,
         :attach_policy,
         :binary_mode,
+        :browser_renderer,
+        :renderers,
+        :raster,
         keyword_init: true
       )
 
@@ -40,7 +43,10 @@ module RTerm
             rate_limit: nil,
             heartbeat_timeout: nil,
             attach_policy: :multiple,
-            binary_mode: :auto
+            binary_mode: :auto,
+            browser_renderer: nil,
+            renderers: nil,
+            raster: false
           )
         end
 
@@ -64,6 +70,7 @@ module RTerm
             config.attach_policy = :single
             config.output_queue_limit = 1_048_576
             config.binary_mode = :auto
+            config.raster = false
             config.terminal_options = (config.terminal_options || {}).merge(
               clipboard_enabled: false,
               clipboard_max_bytes: 64 * 1024
@@ -86,7 +93,10 @@ module RTerm
             max_message_bytes: config.max_message_bytes,
             rate_limit: config.rate_limit,
             heartbeat_timeout: config.heartbeat_timeout,
-            attach_policy: config.attach_policy
+            attach_policy: config.attach_policy,
+            browser_renderer: config.browser_renderer,
+            renderers: config.renderers,
+            raster: config.raster
           )
         end
 

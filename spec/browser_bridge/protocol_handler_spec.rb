@@ -226,6 +226,25 @@ RSpec.describe RTerm::BrowserBridge::SessionManager do
       end.not_to raise_error
     end
 
+    it 'loads raster renderer when requested' do
+      configured = described_class.new(browser_renderer: :raster)
+      id = configured.create_session(cellWidth: 4, cellHeight: 5)
+
+      snapshot = configured.attach_session(id)
+      types = snapshot["host_commands"].map { |command| command[:type] }
+
+      expect(snapshot["renderers"]).to include(:screen, :raster)
+      expect(types).to include(:raster)
+    end
+
+    it 'accepts per-session renderer options' do
+      id = manager.create_session(renderers: %w[screen raster])
+
+      snapshot = manager.attach_session(id)
+
+      expect(snapshot["renderers"]).to include(:raster)
+    end
+
     it 'cleans up sessions past absolute timeout' do
       now = Time.at(100)
       timed = described_class.new(max_sessions: 3, session_timeout: 10, clock: -> { now })

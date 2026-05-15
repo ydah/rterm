@@ -16,6 +16,9 @@ RSpec.describe RTerm::BrowserBridge::WebSocketServer do
       config.heartbeat_timeout = nil
       config.attach_policy = :multiple
       config.binary_mode = :auto
+      config.browser_renderer = nil
+      config.renderers = nil
+      config.raster = false
     end
     example.run
     described_class.configure do |config|
@@ -32,6 +35,9 @@ RSpec.describe RTerm::BrowserBridge::WebSocketServer do
       config.heartbeat_timeout = nil
       config.attach_policy = :multiple
       config.binary_mode = :auto
+      config.browser_renderer = nil
+      config.renderers = nil
+      config.raster = false
     end
   end
 
@@ -50,6 +56,8 @@ RSpec.describe RTerm::BrowserBridge::WebSocketServer do
       config.heartbeat_timeout = 45
       config.attach_policy = :single
       config.binary_mode = :required
+      config.browser_renderer = :raster
+      config.raster = true
     end
 
     expect(described_class.config.default_command).to eq("/bin/bash")
@@ -65,17 +73,22 @@ RSpec.describe RTerm::BrowserBridge::WebSocketServer do
     expect(described_class.config.heartbeat_timeout).to eq(45)
     expect(described_class.config.attach_policy).to eq(:single)
     expect(described_class.config.binary_mode).to eq(:required)
+    expect(described_class.config.browser_renderer).to eq(:raster)
+    expect(described_class.config.raster).to be true
   end
 
   it "builds a session manager from configuration" do
     described_class.configure do |config|
       config.max_sessions = 3
       config.max_message_bytes = 4096
+      config.raster = true
     end
 
     manager = described_class.session_manager
+    session_id = manager.create_session
 
     expect(manager.max_sessions).to eq(3)
+    expect(manager.attach_session(session_id)["renderers"]).to include(:raster)
   end
 
   it "applies secure defaults and allows overrides" do
@@ -92,6 +105,7 @@ RSpec.describe RTerm::BrowserBridge::WebSocketServer do
     expect(described_class.config.attach_policy).to eq(:single)
     expect(described_class.config.output_queue_limit).to eq(1_048_576)
     expect(described_class.config.binary_mode).to eq(:auto)
+    expect(described_class.config.raster).to be false
     expect(described_class.config.terminal_options).to include(
       clipboard_enabled: false,
       clipboard_max_bytes: 64 * 1024,

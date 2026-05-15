@@ -114,7 +114,8 @@ module RTerm
         element = RTerm::Terminal::HostElement.new(tag_name: "div", class_name: "rterm-row")
         element.dataset["row"] = visible_row.to_s
         element.dataset["absoluteRow"] = absolute_row.to_s
-        cells = cell_snapshots(line, visible_row, element)
+        links = link_map_for_row(visible_row)
+        cells = cell_snapshots(line, visible_row, element, links)
         text = line ? line.to_string(trim_right: @trim_right) : ""
         element.text_content = text
 
@@ -128,18 +129,18 @@ module RTerm
         }
       end
 
-      def cell_snapshots(line, visible_row, row_element)
+      def cell_snapshots(line, visible_row, row_element, links)
         (0...@terminal.cols).filter_map do |col|
           cell = line&.get_cell(col)
           next unless cell
 
-          snapshot = cell_snapshot(cell, visible_row, col)
+          snapshot = cell_snapshot(cell, visible_row, col, links[col])
           row_element.append_child(snapshot[:element])
           snapshot
         end
       end
 
-      def cell_snapshot(cell, row, col)
+      def cell_snapshot(cell, row, col, link)
         element = RTerm::Terminal::HostElement.new(tag_name: "span", class_name: "rterm-cell")
         element.dataset["row"] = row.to_s
         element.dataset["col"] = col.to_s
@@ -148,6 +149,8 @@ module RTerm
         colors = @terminal.cell_colors(cell)
         element.style["color"] = colors[:foreground].to_s if colors[:foreground]
         element.style["backgroundColor"] = colors[:background].to_s if colors[:background]
+        resolved_link = cell.link || link
+        element.dataset["linkUri"] = resolved_link[:uri].to_s if resolved_link
 
         {
           row: row,
@@ -156,9 +159,37 @@ module RTerm
           width: cell.width,
           colors: colors,
           attributes: cell_attributes(cell),
-          link: cell.link,
+          link: resolved_link,
           element: element
         }
+      end
+
+      def link_map_for_row(row)
+        return {} unless @terminal.respond_to?(:links)
+
+        @terminal.links(row: row).each_with_object({}) do |link, result|
+          payload = link_payload(link)
+          Array(link[:ranges]).each do |range|
+            next unless range[:row].to_i == row
+
+            start_col = range[:col].to_i
+            end_col = start_col + range[:length].to_i
+            (start_col...end_col).each { |col| result[col] = payload }
+          end
+        end
+      rescue StandardError
+        {}
+      end
+
+      def link_payload(link)
+        {
+          uri: link[:url],
+          url: link[:url],
+          text: link[:text],
+          row: link[:row],
+          col: link[:col],
+          ranges: link[:ranges]
+        }.compact
       end
 
       def cell_attributes(cell)
