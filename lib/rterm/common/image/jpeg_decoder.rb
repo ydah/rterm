@@ -35,6 +35,8 @@ module RTerm
         @components = []
         @scan_components = []
         @previous_dc = Hash.new(0)
+        @progressive_blocks = nil
+        @eob_run = 0
       end
 
       def decode
@@ -54,16 +56,17 @@ module RTerm
       def scan_segments
         until @index >= @bytes.bytesize
           marker = next_marker
-          return metadata if marker.nil? || marker == FINISH
+          return finish_image if marker.nil? || marker == FINISH
           next if standalone_marker?(marker)
 
           length = read_u16
           payload = read(length - 2)
-          return decode_scan(payload) if marker == START_OF_SCAN
+          result = decode_scan(payload) if marker == START_OF_SCAN
+          return result if result
 
           process_segment(marker, payload)
         end
-        metadata
+        finish_image
       end
 
       def process_segment(marker, payload)
@@ -107,6 +110,12 @@ module RTerm
           components: @components.length,
           progressive: @frame_marker == 0xc2
         }.merge(extra).compact
+      end
+
+      def finish_image
+        return progressive_image if progressive? && @progressive_blocks
+
+        metadata
       end
 
       def parse_quantization(payload)
@@ -159,9 +168,14 @@ module RTerm
 
       def decode_scan(payload)
         parse_scan_header(payload)
+        entropy = read_entropy_data
+        if progressive_supported?
+          decode_progressive_scan(EntropyReader.new(entropy))
+          return nil
+        end
         return metadata unless baseline_supported?
 
-        pixels = decode_pixels(EntropyReader.new(scan_data))
+        pixels = decode_pixels(EntropyReader.new(entropy))
         metadata(format: :rgba, pixels: pixels)
       rescue ArgumentError
         metadata
@@ -177,6 +191,11 @@ module RTerm
           component = @components.find { |item| item[:id] == id } || {}
           component.merge(dc_table: selectors >> 4, ac_table: selectors & 0x0f)
         end
+        @spectral_start = payload.getbyte(offset).to_i
+        @spectral_end = payload.getbyte(offset + 1).to_i
+        successive = payload.getbyte(offset + 2).to_i
+        @successive_high = successive >> 4
+        @successive_low = successive & 0x0f
       end
 
       def baseline_supported?
@@ -186,9 +205,240 @@ module RTerm
           @components.all? { |component| @quantization[component[:quantization_id]] }
       end
 
-      def scan_data
-        finish = @bytes.index("\xff\xd9".b, @index) || @bytes.bytesize
-        @bytes.byteslice(@index, finish - @index).to_s
+      def progressive?
+        @frame_marker == 0xc2
+      end
+
+      def progressive_supported?
+        progressive? &&
+          @precision == 8 &&
+          [1, 3].include?(@components.length) &&
+          @components.all? { |component| @quantization[component[:quantization_id]] }
+      end
+
+      def read_entropy_data
+        start = @index
+        cursor = @index
+        while cursor < @bytes.bytesize
+          if @bytes.getbyte(cursor) == 0xff
+            marker = @bytes.getbyte(cursor + 1)
+            if marker == 0x00 || (0xd0..0xd7).include?(marker)
+              cursor += 2
+              next
+            end
+            @index = cursor
+            return @bytes.byteslice(start, cursor - start).to_s
+          end
+          cursor += 1
+        end
+        @index = cursor
+        @bytes.byteslice(start, cursor - start).to_s
+      end
+
+      def decode_progressive_scan(reader)
+        prepare_progressive_blocks
+        if @spectral_start.zero? && @spectral_end.zero?
+          decode_progressive_dc_scan(reader)
+        else
+          decode_progressive_ac_scan(reader)
+        end
+      end
+
+      def prepare_progressive_blocks
+        return if @progressive_blocks
+
+        max_h = @components.map { |component| component[:h] }.max
+        max_v = @components.map { |component| component[:v] }.max
+        @mcu_cols = (@width + (max_h * 8) - 1) / (max_h * 8)
+        @mcu_rows = (@height + (max_v * 8) - 1) / (max_v * 8)
+        @progressive_blocks = @components.each_with_object({}) do |component, result|
+          rows = @mcu_rows * component[:v]
+          cols = @mcu_cols * component[:h]
+          result[component[:id]] = Array.new(rows) { Array.new(cols) { Array.new(64, 0) } }
+        end
+      end
+
+      def progressive_image
+        planes = @components.each_with_object({}) do |component, result|
+          rows = @progressive_blocks[component[:id]].length
+          cols = @progressive_blocks[component[:id]].first.length
+          plane = Array.new(rows * 8) { Array.new(cols * 8, 0) }
+          rows.times do |block_y|
+            cols.times do |block_x|
+              coefficients = dequantize(@progressive_blocks[component[:id]][block_y][block_x], component)
+              draw_block(plane, idct(coefficients), block_x, block_y)
+            end
+          end
+          result[component[:id]] = plane
+        end
+        metadata(format: :rgba, pixels: compose_pixels(planes))
+      rescue ArgumentError
+        metadata
+      end
+
+      def dequantize(coefficients, component)
+        quantization = @quantization[component[:quantization_id]]
+        coefficients.each_with_index.map { |value, position| value * quantization[position].to_i }
+      end
+
+      def decode_progressive_dc_scan(reader)
+        @previous_dc = Hash.new(0) if @successive_high.zero?
+        progressive_scan_blocks.each do |component, block_x, block_y|
+          block = progressive_block(component, block_x, block_y)
+          if @successive_high.zero?
+            table = @huffman[:dc][component[:dc_table] || 0]
+            raise ArgumentError, "missing JPEG Huffman table" unless table
+
+            size = decode_huffman(reader, table)
+            @previous_dc[component[:id]] += receive(reader, size)
+            block[0] = @previous_dc[component[:id]] << @successive_low
+          else
+            bit = reader.bit
+            raise ArgumentError, "truncated JPEG coefficient" if bit.nil?
+
+            block[0] |= bit << @successive_low
+          end
+        end
+      end
+
+      def decode_progressive_ac_scan(reader)
+        raise ArgumentError, "progressive AC scans must target one component" unless @scan_components.length == 1
+
+        component = @scan_components.first
+        @eob_run = 0
+        progressive_scan_blocks.each do |_scan_component, block_x, block_y|
+          block = progressive_block(component, block_x, block_y)
+          if @successive_high.zero?
+            decode_progressive_ac_initial(reader, component, block)
+          else
+            decode_progressive_ac_refinement(reader, component, block)
+          end
+        end
+      end
+
+      def decode_progressive_ac_initial(reader, component, block)
+        return @eob_run -= 1 if @eob_run.positive?
+
+        table = @huffman[:ac][component[:ac_table] || 0]
+        raise ArgumentError, "missing JPEG Huffman table" unless table
+
+        index = @spectral_start
+        while index <= @spectral_end
+          symbol = decode_huffman(reader, table)
+          run = symbol >> 4
+          size = symbol & 0x0f
+          if size.zero?
+            if run == 15
+              index += 16
+              next
+            end
+            @eob_run = (1 << run) + receive(reader, run) - 1
+            break
+          end
+
+          index += run
+          break if index > @spectral_end
+
+          block[ZIGZAG[index]] = receive(reader, size) << @successive_low
+          index += 1
+        end
+      end
+
+      def decode_progressive_ac_refinement(reader, component, block)
+        if @eob_run.positive?
+          refine_nonzero_coefficients(reader, block, @spectral_start, @spectral_end)
+          @eob_run -= 1
+          return
+        end
+
+        table = @huffman[:ac][component[:ac_table] || 0]
+        raise ArgumentError, "missing JPEG Huffman table" unless table
+
+        index = @spectral_start
+        while index <= @spectral_end
+          coefficient_index = ZIGZAG[index]
+          if block[coefficient_index].nonzero?
+            refine_coefficient(reader, block, coefficient_index)
+            index += 1
+            next
+          end
+
+          symbol = decode_huffman(reader, table)
+          run = symbol >> 4
+          size = symbol & 0x0f
+          if size.zero? && run != 15
+            @eob_run = (1 << run) + receive(reader, run)
+            refine_nonzero_coefficients(reader, block, index, @spectral_end)
+            @eob_run -= 1
+            break
+          end
+
+          new_coefficient = size.zero? ? nil : receive(reader, size) << @successive_low
+          index = place_refined_coefficient(reader, block, index, run, new_coefficient)
+        end
+      end
+
+      def place_refined_coefficient(reader, block, index, zero_run, new_coefficient)
+        while index <= @spectral_end
+          coefficient_index = ZIGZAG[index]
+          if block[coefficient_index].nonzero?
+            refine_coefficient(reader, block, coefficient_index)
+          elsif zero_run.positive?
+            zero_run -= 1
+          else
+            block[coefficient_index] = new_coefficient if new_coefficient
+            return index + 1
+          end
+          index += 1
+        end
+        index
+      end
+
+      def refine_nonzero_coefficients(reader, block, start_index, end_index)
+        start_index.upto(end_index) do |index|
+          coefficient_index = ZIGZAG[index]
+          refine_coefficient(reader, block, coefficient_index) if block[coefficient_index].nonzero?
+        end
+      end
+
+      def refine_coefficient(reader, block, coefficient_index)
+        bit = reader.bit
+        raise ArgumentError, "truncated JPEG coefficient" if bit.nil?
+        return if bit.zero?
+
+        delta = 1 << @successive_low
+        return unless (block[coefficient_index].abs & delta).zero?
+
+        block[coefficient_index] += block[coefficient_index].positive? ? delta : -delta
+      end
+
+      def progressive_scan_blocks
+        if @scan_components.length == 1
+          component = @scan_components.first
+          rows = @mcu_rows * component[:v]
+          cols = @mcu_cols * component[:h]
+          return Enumerator.new do |yielder|
+            rows.times { |block_y| cols.times { |block_x| yielder << [component, block_x, block_y] } }
+          end
+        end
+
+        Enumerator.new do |yielder|
+          @mcu_rows.times do |mcu_y|
+            @mcu_cols.times do |mcu_x|
+              @scan_components.each do |component|
+                component[:v].times do |vertical|
+                  component[:h].times do |horizontal|
+                    yielder << [component, (mcu_x * component[:h]) + horizontal, (mcu_y * component[:v]) + vertical]
+                  end
+                end
+              end
+            end
+          end
+        end
+      end
+
+      def progressive_block(component, block_x, block_y)
+        @progressive_blocks.fetch(component[:id]).fetch(block_y).fetch(block_x)
       end
 
       def decode_pixels(reader)
