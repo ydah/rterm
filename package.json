@@ -1,0 +1,38 @@
+{
+  "name": "rterm-browser-adapter",
+  "version": "0.1.0",
+  "description": "Browser adapter assets for RTerm terminal sessions",
+  "license": "MIT",
+  "homepage": "https://github.com/ydah/rterm",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ydah/rterm.git"
+  },
+  "main": "./lib/rterm/browser_adapter/browser_adapter.js",
+  "module": "./lib/rterm/browser_adapter/index.mjs",
+  "types": "./lib/rterm/browser_adapter/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/rterm/browser_adapter/index.d.ts",
+      "import": "./lib/rterm/browser_adapter/index.mjs",
+      "default": "./lib/rterm/browser_adapter/browser_adapter.js"
+    },
+    "./style.css": "./lib/rterm/browser_adapter/browser_adapter.css",
+    "./browser_adapter.js": "./lib/rterm/browser_adapter/browser_adapter.js",
+    "./webgl_renderer.js": "./lib/rterm/browser_adapter/webgl_renderer.js"
+  },
+  "files": [
+    "lib/rterm/browser_adapter/browser_adapter.css",
+    "lib/rterm/browser_adapter/browser_adapter.js",
+    "lib/rterm/browser_adapter/webgl_renderer.js",
+    "lib/rterm/browser_adapter/index.mjs",
+    "lib/rterm/browser_adapter/index.d.ts",
+    "README.md",
+    "LICENSE.txt"
+  ],
+  "sideEffects": [
+    "./lib/rterm/browser_adapter/browser_adapter.css",
+    "./lib/rterm/browser_adapter/browser_adapter.js",
+    "./lib/rterm/browser_adapter/webgl_renderer.js"
+  ]
+}

@@ -2,7 +2,7 @@
 
 - Run `bundle exec rspec`.
 - Run `bundle exec rake package:verify_contents`.
-- Run `npm pack --dry-run` only if JavaScript packaging is introduced.
+- Run `npm pack --dry-run`.
 - Update `lib/rterm/version.rb`.
 - Update changelog or release notes.
 - Confirm examples run against the released API.

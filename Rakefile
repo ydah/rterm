@@ -3,6 +3,15 @@
 require "bundler/gem_tasks"
 require "rspec/core/rake_task"
 
+BROWSER_PACKAGE_FILES = %w[
+  package.json
+  lib/rterm/browser_adapter/browser_adapter.css
+  lib/rterm/browser_adapter/browser_adapter.js
+  lib/rterm/browser_adapter/webgl_renderer.js
+  lib/rterm/browser_adapter/index.mjs
+  lib/rterm/browser_adapter/index.d.ts
+].freeze
+
 RSpec::Core::RakeTask.new(:spec)
 
 namespace :e2e do
@@ -33,18 +42,23 @@ namespace :docs do
 end
 
 namespace :package do
+  desc "Verify browser adapter package metadata"
+  task :verify_browser_adapter do
+    missing = BROWSER_PACKAGE_FILES.reject { |path| File.file?(path) }
+    raise "Missing browser package files: #{missing.join(', ')}" unless missing.empty?
+
+    sh "npm pack --dry-run --json"
+  end
+
   desc "Verify gem package contents before release"
-  task :verify_contents do
+  task verify_contents: :verify_browser_adapter do
     spec = Gem::Specification.load("rterm.gemspec")
     forbidden = spec.files.grep(%r{\A(?:spec|\.idea|\.github|tmp|pkg|doc)/})
     raise "Forbidden files in package: #{forbidden.join(', ')}" unless forbidden.empty?
 
-    required = %w[
+    required = BROWSER_PACKAGE_FILES + %w[
       lib/rterm.rb
       lib/rterm/browser_adapter.rb
-      lib/rterm/browser_adapter/browser_adapter.css
-      lib/rterm/browser_adapter/browser_adapter.js
-      lib/rterm/browser_adapter/webgl_renderer.js
       README.md
       LICENSE.txt
     ]
