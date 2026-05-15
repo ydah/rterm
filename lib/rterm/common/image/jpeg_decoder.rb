@@ -22,6 +22,125 @@ module RTerm
         58, 59, 52, 45, 38, 31, 39, 46,
         53, 60, 61, 54, 47, 55, 62, 63
       ].freeze
+      ARITHMETIC_DC_STATS_SIZE = 64
+      ARITHMETIC_AC_STATS_SIZE = 256
+      ARITHMETIC_FIXED_STATE = 113
+      ARITHMETIC_STATE_TABLE = [
+        [0x5a1d, 1, 1, 1],
+        [0x2586, 14, 2, 0],
+        [0x1114, 16, 3, 0],
+        [0x080b, 18, 4, 0],
+        [0x03d8, 20, 5, 0],
+        [0x01da, 23, 6, 0],
+        [0x00e5, 25, 7, 0],
+        [0x006f, 28, 8, 0],
+        [0x0036, 30, 9, 0],
+        [0x001a, 33, 10, 0],
+        [0x000d, 35, 11, 0],
+        [0x0006, 9, 12, 0],
+        [0x0003, 10, 13, 0],
+        [0x0001, 12, 13, 0],
+        [0x5a7f, 15, 15, 1],
+        [0x3f25, 36, 16, 0],
+        [0x2cf2, 38, 17, 0],
+        [0x207c, 39, 18, 0],
+        [0x17b9, 40, 19, 0],
+        [0x1182, 42, 20, 0],
+        [0x0cef, 43, 21, 0],
+        [0x09a1, 45, 22, 0],
+        [0x072f, 46, 23, 0],
+        [0x055c, 48, 24, 0],
+        [0x0406, 49, 25, 0],
+        [0x0303, 51, 26, 0],
+        [0x0240, 52, 27, 0],
+        [0x01b1, 54, 28, 0],
+        [0x0144, 56, 29, 0],
+        [0x00f5, 57, 30, 0],
+        [0x00b7, 59, 31, 0],
+        [0x008a, 60, 32, 0],
+        [0x0068, 62, 33, 0],
+        [0x004e, 63, 34, 0],
+        [0x003b, 32, 35, 0],
+        [0x002c, 33, 9, 0],
+        [0x5ae1, 37, 37, 1],
+        [0x484c, 64, 38, 0],
+        [0x3a0d, 65, 39, 0],
+        [0x2ef1, 67, 40, 0],
+        [0x261f, 68, 41, 0],
+        [0x1f33, 69, 42, 0],
+        [0x19a8, 70, 43, 0],
+        [0x1518, 72, 44, 0],
+        [0x1177, 73, 45, 0],
+        [0x0e74, 74, 46, 0],
+        [0x0bfb, 75, 47, 0],
+        [0x09f8, 77, 48, 0],
+        [0x0861, 78, 49, 0],
+        [0x0706, 79, 50, 0],
+        [0x05cd, 48, 51, 0],
+        [0x04de, 50, 52, 0],
+        [0x040f, 50, 53, 0],
+        [0x0363, 51, 54, 0],
+        [0x02d4, 52, 55, 0],
+        [0x025c, 53, 56, 0],
+        [0x01f8, 54, 57, 0],
+        [0x01a4, 55, 58, 0],
+        [0x0160, 56, 59, 0],
+        [0x0125, 57, 60, 0],
+        [0x00f6, 58, 61, 0],
+        [0x00cb, 59, 62, 0],
+        [0x00ab, 61, 63, 0],
+        [0x008f, 61, 32, 0],
+        [0x5b12, 65, 65, 1],
+        [0x4d04, 80, 66, 0],
+        [0x412c, 81, 67, 0],
+        [0x37d8, 82, 68, 0],
+        [0x2fe8, 83, 69, 0],
+        [0x293c, 84, 70, 0],
+        [0x2379, 86, 71, 0],
+        [0x1edf, 87, 72, 0],
+        [0x1aa9, 87, 73, 0],
+        [0x174e, 72, 74, 0],
+        [0x1424, 72, 75, 0],
+        [0x119c, 74, 76, 0],
+        [0x0f6b, 74, 77, 0],
+        [0x0d51, 75, 78, 0],
+        [0x0bb6, 77, 79, 0],
+        [0x0a40, 77, 48, 0],
+        [0x5832, 80, 81, 1],
+        [0x4d1c, 88, 82, 0],
+        [0x438e, 89, 83, 0],
+        [0x3bdd, 90, 84, 0],
+        [0x34ee, 91, 85, 0],
+        [0x2eae, 92, 86, 0],
+        [0x299a, 93, 87, 0],
+        [0x2516, 86, 71, 0],
+        [0x5570, 88, 89, 1],
+        [0x4ca9, 95, 90, 0],
+        [0x44d9, 96, 91, 0],
+        [0x3e22, 97, 92, 0],
+        [0x3824, 99, 93, 0],
+        [0x32b4, 99, 94, 0],
+        [0x2e17, 93, 86, 0],
+        [0x56a8, 95, 96, 1],
+        [0x4f46, 101, 97, 0],
+        [0x47e5, 102, 98, 0],
+        [0x41cf, 103, 99, 0],
+        [0x3c3d, 104, 100, 0],
+        [0x375e, 99, 93, 0],
+        [0x5231, 105, 102, 0],
+        [0x4c0f, 106, 103, 0],
+        [0x4639, 107, 104, 0],
+        [0x415e, 103, 99, 0],
+        [0x5627, 105, 106, 1],
+        [0x50e7, 108, 107, 0],
+        [0x4b85, 109, 103, 0],
+        [0x5597, 110, 109, 0],
+        [0x504f, 111, 107, 0],
+        [0x5a10, 110, 111, 1],
+        [0x5522, 112, 109, 0],
+        [0x59eb, 112, 111, 1],
+        [0x5a1d, 113, 113, 0]
+      ].freeze
 
       def self.decode(bytes)
         new(bytes).decode
@@ -201,6 +320,7 @@ module RTerm
           return nil
         end
         return metadata(format: :rgba, pixels: decode_lossless_pixels(EntropyReader.new(entropy))) if lossless_supported?
+        return metadata(format: :rgba, pixels: decode_arithmetic_pixels(ArithmeticEntropyReader.new(entropy))) if arithmetic_sequential_supported?
         return metadata unless baseline_supported?
 
         pixels = decode_pixels(EntropyReader.new(entropy))
@@ -258,6 +378,17 @@ module RTerm
           !arithmetic? &&
           supported_precision? &&
           supported_component_count? &&
+          @components.all? { |component| @quantization[component[:quantization_id]] }
+      end
+
+      def arithmetic_sequential_supported?
+        @frame_marker == 0xc9 &&
+          supported_precision? &&
+          supported_component_count? &&
+          @spectral_start.zero? &&
+          @spectral_end == 63 &&
+          @successive_high.zero? &&
+          @successive_low.zero? &&
           @components.all? { |component| @quantization[component[:quantization_id]] }
       end
 
@@ -588,6 +719,170 @@ module RTerm
         end
       end
 
+      def decode_arithmetic_pixels(reader)
+        reset_arithmetic_state
+        max_h = @components.map { |component| component[:h] }.max
+        max_v = @components.map { |component| component[:v] }.max
+        mcu_cols = (@width + (max_h * 8) - 1) / (max_h * 8)
+        mcu_rows = (@height + (max_v * 8) - 1) / (max_v * 8)
+        planes = component_planes(mcu_cols, mcu_rows)
+
+        mcu_rows.times do |mcu_y|
+          mcu_cols.times do |mcu_x|
+            @scan_components.each do |component|
+              component[:v].times do |vertical|
+                component[:h].times do |horizontal|
+                  block = decode_arithmetic_block(reader, component)
+                  draw_block(planes[component[:id]], block, (mcu_x * component[:h]) + horizontal, (mcu_y * component[:v]) + vertical)
+                end
+              end
+            end
+          end
+        end
+
+        compose_pixels(planes)
+      end
+
+      def reset_arithmetic_state
+        @previous_dc = Hash.new(0)
+        @arithmetic_dc_stats = Hash.new { |hash, key| hash[key] = arithmetic_contexts(ARITHMETIC_DC_STATS_SIZE) }
+        @arithmetic_ac_stats = Hash.new { |hash, key| hash[key] = arithmetic_contexts(ARITHMETIC_AC_STATS_SIZE) }
+        @arithmetic_dc_contexts = Hash.new(0)
+        @arithmetic_fixed_context = ArithmeticContext.new(ARITHMETIC_FIXED_STATE)
+      end
+
+      def arithmetic_contexts(size)
+        Array.new(size) { ArithmeticContext.new }
+      end
+
+      def decode_arithmetic_block(reader, component)
+        coefficients = Array.new(64, 0)
+        decode_arithmetic_dc(reader, component, coefficients)
+        decode_arithmetic_ac(reader, component, coefficients) if @spectral_end.positive?
+
+        quantization = @quantization[component[:quantization_id]]
+        idct(coefficients.each_with_index.map { |value, position| value * quantization[position].to_i })
+      end
+
+      def decode_arithmetic_dc(reader, component, coefficients)
+        table_id = component[:dc_table] || 0
+        stats = @arithmetic_dc_stats[table_id]
+        context_key = component[:id]
+        state_offset = @arithmetic_dc_contexts[context_key]
+
+        if reader.decision(stats[state_offset]).zero?
+          @arithmetic_dc_contexts[context_key] = 0
+        else
+          diff = decode_arithmetic_dc_diff(reader, stats, state_offset, table_id, context_key)
+          @previous_dc[context_key] += diff
+        end
+
+        coefficients[0] = @previous_dc[context_key]
+      end
+
+      def decode_arithmetic_dc_diff(reader, stats, state_offset, table_id, context_key)
+        sign = reader.decision(stats[state_offset + 1])
+        state_offset += 2 + sign
+        magnitude = reader.decision(stats[state_offset])
+
+        if magnitude.nonzero?
+          state_offset = 20
+          while reader.decision(stats[state_offset]).nonzero?
+            magnitude <<= 1
+            raise ArgumentError, "invalid JPEG arithmetic magnitude" if magnitude == 0x8000
+
+            state_offset += 1
+          end
+        end
+
+        update_arithmetic_dc_context(table_id, sign, magnitude, context_key)
+        value = decode_arithmetic_magnitude_bits(reader, stats, state_offset, magnitude) + 1
+        sign.zero? ? value : -value
+      end
+
+      def update_arithmetic_dc_context(table_id, sign, magnitude, context_key)
+        if magnitude < ((1 << arithmetic_dc_l(table_id)) >> 1)
+          context = 0
+        elsif magnitude > ((1 << arithmetic_dc_u(table_id)) >> 1)
+          context = 12 + (sign * 4)
+        else
+          context = 4 + (sign * 4)
+        end
+        @arithmetic_dc_contexts[context_key] = context
+      end
+
+      def decode_arithmetic_ac(reader, component, coefficients)
+        table_id = component[:ac_table] || 0
+        stats = @arithmetic_ac_stats[table_id]
+        index = 0
+
+        while index < @spectral_end
+          state_offset = 3 * index
+          break if reader.decision(stats[state_offset]).nonzero?
+
+          state_offset, index = next_arithmetic_ac_nonzero(reader, stats, state_offset, index)
+          sign = reader.decision(@arithmetic_fixed_context)
+          state_offset += 2
+          magnitude, state_offset = decode_arithmetic_ac_magnitude(reader, stats, state_offset, table_id, index)
+          value = decode_arithmetic_magnitude_bits(reader, stats, state_offset, magnitude) + 1
+          coefficients[ZIGZAG[index]] = sign.zero? ? value : -value
+        end
+      end
+
+      def next_arithmetic_ac_nonzero(reader, stats, state_offset, index)
+        loop do
+          index += 1
+          break if reader.decision(stats[state_offset + 1]).nonzero?
+
+          state_offset += 3
+          raise ArgumentError, "invalid JPEG arithmetic coefficient run" if index >= @spectral_end
+        end
+
+        [state_offset, index]
+      end
+
+      def decode_arithmetic_ac_magnitude(reader, stats, state_offset, table_id, index)
+        magnitude = reader.decision(stats[state_offset])
+        return [magnitude, state_offset] if magnitude.zero?
+
+        if reader.decision(stats[state_offset]).nonzero?
+          magnitude <<= 1
+          state_offset = index <= arithmetic_ac_k(table_id) ? 189 : 217
+          while reader.decision(stats[state_offset]).nonzero?
+            magnitude <<= 1
+            raise ArgumentError, "invalid JPEG arithmetic magnitude" if magnitude == 0x8000
+
+            state_offset += 1
+          end
+        end
+        [magnitude, state_offset]
+      end
+
+      def decode_arithmetic_magnitude_bits(reader, stats, state_offset, magnitude)
+        value = magnitude
+        state_offset += 14
+        while (magnitude >>= 1).positive?
+          value |= magnitude if reader.decision(stats[state_offset]).nonzero?
+        end
+        value
+      end
+
+      def arithmetic_dc_l(table_id)
+        arithmetic_dc_conditioning(table_id) & 0x0f
+      end
+
+      def arithmetic_dc_u(table_id)
+        arithmetic_dc_conditioning(table_id) >> 4
+      end
+
+      def arithmetic_dc_conditioning(table_id)
+        @arithmetic_conditioning[:dc].fetch(table_id, 0x10)
+      end
+
+      def arithmetic_ac_k(table_id)
+        @arithmetic_conditioning[:ac].fetch(table_id, 5)
+      end
+
       def decode_pixels(reader)
         max_h = @components.map { |component| component[:h] }.max
         max_v = @components.map { |component| component[:v] }.max
@@ -597,7 +892,7 @@ module RTerm
 
         mcu_rows.times do |mcu_y|
           mcu_cols.times do |mcu_x|
-            @components.each do |component|
+            @scan_components.each do |component|
               component[:v].times do |vertical|
                 component[:h].times do |horizontal|
                   block = decode_block(reader, component)
@@ -870,6 +1165,99 @@ module RTerm
             @index += 1 if marker == 0x00
           end
           7.downto(0) { |shift| @bits << ((byte >> shift) & 1) }
+        end
+      end
+
+      class ArithmeticContext
+        attr_accessor :state
+
+        def initialize(state = 0)
+          @state = state
+        end
+      end
+
+      class ArithmeticEntropyReader
+        def initialize(data)
+          @data = data
+          @index = 0
+          @a = 0
+          @c = 0
+          @ct = -16
+          @marker = false
+        end
+
+        def decision(context)
+          renormalize
+          state = context.state
+          qe, next_lps, next_mps, switch_mps = ARITHMETIC_STATE_TABLE.fetch(state & 0x7f)
+          @a -= qe
+          threshold = @a << @ct
+
+          if @c >= threshold
+            @c -= threshold
+            if @a < qe
+              @a = qe
+              context.state = (state & 0x80) ^ next_mps
+            else
+              @a = qe
+              context.state = (state & 0x80) ^ lps_state(next_lps, switch_mps)
+              state ^= 0x80
+            end
+          elsif @a < 0x8000
+            if @a < qe
+              context.state = (state & 0x80) ^ lps_state(next_lps, switch_mps)
+              state ^= 0x80
+            else
+              context.state = (state & 0x80) ^ next_mps
+            end
+          end
+
+          state >> 7
+        end
+
+        private
+
+        def lps_state(next_lps, switch_mps)
+          switch_mps.zero? ? next_lps : (next_lps | 0x80)
+        end
+
+        def renormalize
+          while @a < 0x8000
+            @ct -= 1
+            if @ct.negative?
+              @c = (@c << 8) | next_byte
+              @ct += 8
+              if @ct.negative?
+                @ct += 1
+                @a = 0x8000 if @ct.zero?
+              end
+            end
+            @a <<= 1
+          end
+        end
+
+        def next_byte
+          return 0 if @marker
+
+          byte = @data.getbyte(@index)
+          @index += 1
+          return 0 if byte.nil?
+
+          return byte unless byte == 0xff
+
+          marker = next_marker_byte
+          return 0xff if marker&.zero?
+
+          @marker = true
+          0
+        end
+
+        def next_marker_byte
+          loop do
+            marker = @data.getbyte(@index)
+            @index += 1
+            return marker unless marker == 0xff
+          end
         end
       end
     end
