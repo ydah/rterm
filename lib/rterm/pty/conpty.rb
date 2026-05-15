@@ -28,6 +28,7 @@ module RTerm
       pid
       exit_status
       exit_signal
+      native?
       process_group_id
       process_group_enabled?
       process_group_fallback_reason
@@ -145,6 +146,10 @@ module RTerm
 
     def exit_signal
       backend.exit_signal if backend.respond_to?(:exit_signal)
+    end
+
+    def native?
+      backend.respond_to?(:native?) && backend.native?
     end
 
     def process_group_id

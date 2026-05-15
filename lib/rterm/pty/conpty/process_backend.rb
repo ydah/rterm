@@ -2,6 +2,7 @@
 
 require "open3"
 require_relative "../../common/event_emitter"
+require_relative "windows_pseudo_console"
 
 module RTerm
   class ConPTY
@@ -11,7 +12,7 @@ module RTerm
       attr_reader :pid, :exit_status, :exit_signal, :cols, :rows
 
       def initialize(command: nil, args: [], env: {}, cwd: nil, cols: 80, rows: 24,
-                     read_chunk_size: DEFAULT_READ_CHUNK_SIZE, **_options)
+                     read_chunk_size: DEFAULT_READ_CHUNK_SIZE, native: Gem.win_platform?, **_options)
         @command = command || ENV["COMSPEC"] || "cmd.exe"
         @args = Array(args)
         @env = stringify_env(env || {})
@@ -26,8 +27,9 @@ module RTerm
         @exit_status = nil
         @exit_signal = nil
         @exit_notified = false
+        @native = false
         @mutex = Mutex.new
-        spawn_process
+        native && WindowsPseudoConsole.supported? ? spawn_native_console : spawn_process
       end
 
       def write(data)
@@ -95,12 +97,18 @@ module RTerm
       end
 
       def resize(cols, rows)
-        @cols = cols.to_i
-        @rows = rows.to_i
+        new_cols = cols.to_i
+        new_rows = rows.to_i
+        return false if @native && !@native_console.resize(new_cols, new_rows)
+
+        @cols = new_cols
+        @rows = new_rows
         true
       end
 
       def kill(signal = :TERM, group: false)
+        return @native_console.terminate if @native
+
         target = group ? -@pid : @pid
         Process.kill(signal, target)
         true
@@ -118,6 +126,7 @@ module RTerm
           kill(:TERM)
           wait_for_exit(timeout)
         end
+        @native_console&.close
         true
       end
 
@@ -151,7 +160,27 @@ module RTerm
         nil
       end
 
+      def native?
+        @native
+      end
+
       private
+
+      def spawn_native_console
+        @native_console = WindowsPseudoConsole.new(
+          command: @command,
+          args: @args,
+          env: @env,
+          cwd: @cwd,
+          cols: @cols,
+          rows: @rows
+        )
+        @stdin = @native_console.stdin
+        @stdout = @native_console.stdout
+        @pid = @native_console.pid
+        @wait_thread = Thread.new { @native_console.wait }
+        @native = true
+      end
 
       def spawn_process
         options = {}
@@ -178,7 +207,7 @@ module RTerm
           rescue IO::WaitReadable
             break if closed? || @stdout.closed?
 
-            IO.select([@stdout], nil, nil, 0.1) rescue nil
+            wait_for_readable_output
             retry
           rescue EOFError, IOError, Errno::EBADF
             break
@@ -186,6 +215,12 @@ module RTerm
 
           wait_for_exit(1.0)
         end
+      end
+
+      def wait_for_readable_output
+        return sleep 0.05 if @native
+
+        IO.select([@stdout], nil, nil, 0.1) rescue nil
       end
 
       def exited?

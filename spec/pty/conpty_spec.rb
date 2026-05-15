@@ -170,6 +170,7 @@ RSpec.describe RTerm::ConPTY do
       :wait_for_exit,
       :alive?
     )
+    expect(described_class.backend_contract[:optional]).to include(:native?)
 
     expect { described_class.new(command: "cmd.exe", backend: Object.new) }
       .to raise_error(RTerm::ConPTY::BackendUnavailableError, /missing required methods/)
@@ -201,6 +202,7 @@ RSpec.describe RTerm::ConPTY do
     expect(backend.resize(120, 40)).to be true
     expect(backend.cols).to eq(120)
     expect(backend.rows).to eq(40)
+    expect(backend.native?).to eq(Gem.win_platform?)
     expect(backend.wait_for_exit(1)).to eq(0)
   ensure
     backend&.close
@@ -222,6 +224,7 @@ RSpec.describe RTerm::ConPTY do
     end
 
     expect(output).to eq("ready")
+    expect(conpty).to be_native
     expect(conpty.wait_for_exit(2)).to eq(0)
   ensure
     conpty&.close
