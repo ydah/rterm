@@ -13,8 +13,8 @@ module RTerm
       def initialize(bytes)
         @bytes = bytes.to_s.b
         @index = 0
-        @transparent_index = nil
-        @delay = nil
+        @gce = {}
+        @frames = []
       end
 
       def decode
@@ -44,15 +44,17 @@ module RTerm
         @background_index = read_byte
         read_byte
         @global_table = color_table(1 << ((packed & 0x07) + 1)) if (packed & 0x80).positive?
+        @background = (@global_table && @global_table[@background_index]) || transparent_color
+        @canvas = Array.new(@screen_height) { Array.new(@screen_width) { @background.dup } }
       end
 
       def read_blocks
         loop do
           marker = read_byte
           case marker
-          when 0x2c then return read_image
+          when 0x2c then @frames << read_image
           when 0x21 then read_extension
-          when 0x3b then return nil
+          when 0x3b then return payload
           else
             raise ArgumentError, "invalid GIF block"
           end
@@ -73,8 +75,11 @@ module RTerm
         data = read(size)
         read_byte
         packed, delay_low, delay_high, transparent = data.bytes
-        @delay = delay_low.to_i + (delay_high.to_i << 8)
-        @transparent_index = transparent if (packed.to_i & 0x01).positive?
+        @gce = {
+          delay: delay_low.to_i + (delay_high.to_i << 8),
+          disposal: (packed.to_i >> 2) & 0x07
+        }
+        @gce[:transparent_index] = transparent if (packed.to_i & 0x01).positive?
       end
 
       def read_image
@@ -89,19 +94,65 @@ module RTerm
         data = read_sub_blocks
         indices = decode_lzw(data, min_code_size, width * height)
         rows = indexed_rows(indices, table || [], width, height, interlaced)
+        before = deep_dup(@canvas)
+        composite(rows, left, top)
+        pixels = deep_dup(@canvas)
+        frame = {
+          left: left,
+          top: top,
+          width: width,
+          height: height,
+          delay: @gce[:delay],
+          disposal: @gce[:disposal],
+          pixels: pixels
+        }.compact
+        dispose_frame(before, left, top, width, height)
+        @gce = {}
+        frame
+      end
+
+      def payload
+        return nil if @frames.empty?
+
         {
           format: :rgba,
           media_type: :gif,
           version: @version,
-          width: width,
-          height: height,
+          width: @screen_width,
+          height: @screen_height,
           screen_width: @screen_width,
           screen_height: @screen_height,
-          left: left,
-          top: top,
-          delay: @delay,
-          pixels: rows
+          frame_count: @frames.length,
+          frames: @frames,
+          pixels: @frames.first[:pixels]
         }.compact
+      end
+
+      def composite(rows, left, top)
+        rows.each_with_index do |row, row_index|
+          row.each_with_index do |rgba, col_index|
+            next if rgba[3].zero?
+
+            y = top + row_index
+            x = left + col_index
+            @canvas[y][x] = rgba if @canvas[y] && x < @canvas[y].length
+          end
+        end
+      end
+
+      def dispose_frame(before, left, top, width, height)
+        case @gce[:disposal]
+        when 2
+          height.times do |row|
+            width.times do |col|
+              y = top + row
+              x = left + col
+              @canvas[y][x] = @background.dup if @canvas[y] && x < @canvas[y].length
+            end
+          end
+        when 3
+          @canvas = before
+        end
       end
 
       def indexed_rows(indices, table, width, height, interlaced)
@@ -134,9 +185,13 @@ module RTerm
         return transparent_color if index.nil?
 
         rgba = table[index] || [0, 0, 0, 255]
-        return [rgba[0], rgba[1], rgba[2], 0] if index == @transparent_index
+        return [rgba[0], rgba[1], rgba[2], 0] if index == @gce[:transparent_index]
 
         rgba
+      end
+
+      def deep_dup(value)
+        value.map { |row| row.map(&:dup) }
       end
 
       def transparent_color

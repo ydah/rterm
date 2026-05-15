@@ -20,6 +20,6 @@ RSpec.describe "browser adapter real browser smoke" do
   end
 
   def strict_browser_e2e?
-    ENV["RTERM_BROWSER_E2E"] == "1" || ENV["RTERM_STRICT_E2E"] == "1"
+    ENV["CI"] || ENV["RTERM_BROWSER_E2E"] == "1" || ENV["RTERM_STRICT_E2E"] == "1"
   end
 end

@@ -15,6 +15,14 @@ RSpec.describe RTerm::Common::JpegDecoder do
     )
   end
 
+  it "decodes baseline grayscale JPEG pixels" do
+    decoded = described_class.decode(baseline_jpeg_bytes)
+
+    expect(decoded).to include(format: :rgba, media_type: :jpeg, width: 8, height: 8)
+    expect(decoded[:pixels][0][0]).to eq([128, 128, 128, 255])
+    expect(decoded[:pixels][7][7]).to eq([128, 128, 128, 255])
+  end
+
   it "returns nil for unsupported bytes" do
     expect(described_class.decode("not-jpeg")).to be_nil
   end
@@ -30,5 +38,22 @@ RSpec.describe RTerm::Common::JpegDecoder do
       3, 0x11, 1
     ].pack("CnnC9")
     "\xff\xd8".b + "\xff\xc0".b + [frame.bytesize + 2].pack("n") + frame + "\xff\xd9".b
+  end
+
+  def baseline_jpeg_bytes
+    [
+      "\xff\xd8".b,
+      jpeg_segment(0xdb, [0, *Array.new(64, 1)].pack("C*")),
+      jpeg_segment(0xc0, [8, 8, 8, 1, 1, 0x11, 0].pack("CnnCCCC")),
+      jpeg_segment(0xc4, [0, 1, *Array.new(15, 0), 0].pack("C*")),
+      jpeg_segment(0xc4, [0x10, 1, *Array.new(15, 0), 0].pack("C*")),
+      jpeg_segment(0xda, [1, 1, 0, 0, 63, 0].pack("C*")),
+      "\x3f".b,
+      "\xff\xd9".b
+    ].join
+  end
+
+  def jpeg_segment(marker, data)
+    "\xff".b + marker.chr.b + [data.bytesize + 2].pack("n") + data
   end
 end

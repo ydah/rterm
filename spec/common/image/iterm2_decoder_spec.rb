@@ -81,6 +81,19 @@ RSpec.describe RTerm::Common::Iterm2Decoder do
     expect(decoded).to include(protocol: :iterm2, format: :sampled, media_type: :jpeg, width: 2, height: 1)
   end
 
+  it "decodes inline baseline JPEG pixels when entropy data is supported" do
+    image = {
+      protocol: :iterm2,
+      attributes: { "inline" => "1" },
+      data: [baseline_jpeg_bytes].pack("m0")
+    }
+
+    decoded = described_class.decode(image)
+
+    expect(decoded).to include(protocol: :iterm2, format: :rgba, media_type: :jpeg, width: 8, height: 8)
+    expect(decoded[:pixels][0][0]).to eq([128, 128, 128, 255])
+  end
+
   def png_bytes
     header = [1, 1, 8, 6, 0, 0, 0].pack("NNCCCCC")
     row = [0, 255, 0, 0, 255].pack("C*")
@@ -110,5 +123,22 @@ RSpec.describe RTerm::Common::Iterm2Decoder do
   def jpeg_bytes
     frame = [8, 1, 2, 3, 1, 0x11, 0, 2, 0x11, 1, 3, 0x11, 1].pack("CnnC9")
     "\xff\xd8".b + "\xff\xc0".b + [frame.bytesize + 2].pack("n") + frame + "\xff\xd9".b
+  end
+
+  def baseline_jpeg_bytes
+    [
+      "\xff\xd8".b,
+      jpeg_segment(0xdb, [0, *Array.new(64, 1)].pack("C*")),
+      jpeg_segment(0xc0, [8, 8, 8, 1, 1, 0x11, 0].pack("CnnCCCC")),
+      jpeg_segment(0xc4, [0, 1, *Array.new(15, 0), 0].pack("C*")),
+      jpeg_segment(0xc4, [0x10, 1, *Array.new(15, 0), 0].pack("C*")),
+      jpeg_segment(0xda, [1, 1, 0, 0, 63, 0].pack("C*")),
+      "\x3f".b,
+      "\xff\xd9".b
+    ].join
+  end
+
+  def jpeg_segment(marker, data)
+    "\xff".b + marker.chr.b + [data.bytesize + 2].pack("n") + data
   end
 end

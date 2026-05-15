@@ -116,6 +116,28 @@ RSpec.describe RTerm::Addon::RasterRenderer do
     expect(renderer.pixelAt(1, 1)).not_to eq([0, 0, 0, 255])
   end
 
+  it "composes iTerm2 baseline JPEG pixels into the raster frame" do
+    terminal = RTerm::Terminal.new(cols: 2, rows: 2)
+    renderer = described_class.new(cell_width: 4, cell_height: 4, draw_cursor: false)
+
+    terminal.load_addon(renderer)
+    terminal.write("\e]1337;File=name=test.jpg;inline=1;width=2;height=2:#{[baseline_jpeg_bytes].pack("m0")}\a")
+
+    expect(renderer.frame[:images].last).to include(protocol: :iterm2, format: :rgba, media_type: :jpeg)
+    expect(renderer.pixelAt(1, 1)).to eq([128, 128, 128, 255])
+  end
+
+  it "can compose a selected iTerm2 GIF animation frame" do
+    terminal = RTerm::Terminal.new(cols: 1, rows: 1)
+    renderer = described_class.new(cell_width: 4, cell_height: 4, draw_cursor: false, image_frame: 1)
+
+    terminal.load_addon(renderer)
+    terminal.write("\e]1337;File=name=anim.gif;inline=1;width=1;height=1:#{[animated_gif_bytes].pack("m0")}\a")
+
+    expect(renderer.frame[:images].last).to include(protocol: :iterm2, format: :rgba, media_type: :gif, frame: 1, frame_count: 2)
+    expect(renderer.pixelAt(1, 1)).to eq([0, 0, 255, 255])
+  end
+
   def png_bytes
     header = [2, 1, 8, 6, 0, 0, 0].pack("NNCCCCC")
     row = [0, 255, 0, 0, 255, 0, 255, 0, 255].pack("C*")
@@ -145,5 +167,37 @@ RSpec.describe RTerm::Addon::RasterRenderer do
   def jpeg_bytes
     frame = [8, 1, 2, 3, 1, 0x11, 0, 2, 0x11, 1, 3, 0x11, 1].pack("CnnC9")
     "\xff\xd8".b + "\xff\xc0".b + [frame.bytesize + 2].pack("n") + frame + "\xff\xd9".b
+  end
+
+  def baseline_jpeg_bytes
+    [
+      "\xff\xd8".b,
+      jpeg_segment(0xdb, [0, *Array.new(64, 1)].pack("C*")),
+      jpeg_segment(0xc0, [8, 8, 8, 1, 1, 0x11, 0].pack("CnnCCCC")),
+      jpeg_segment(0xc4, [0, 1, *Array.new(15, 0), 0].pack("C*")),
+      jpeg_segment(0xc4, [0x10, 1, *Array.new(15, 0), 0].pack("C*")),
+      jpeg_segment(0xda, [1, 1, 0, 0, 63, 0].pack("C*")),
+      "\x3f".b,
+      "\xff\xd9".b
+    ].join
+  end
+
+  def jpeg_segment(marker, data)
+    "\xff".b + marker.chr.b + [data.bytesize + 2].pack("n") + data
+  end
+
+  def animated_gif_bytes
+    [
+      "GIF89a",
+      [1, 1, 0x81, 0, 0].pack("vvCCC"),
+      [255, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0].pack("C*"),
+      ",",
+      [0, 0, 1, 1, 0].pack("vvvvC"),
+      [2, 2, 0x44, 0x01, 0].pack("C*"),
+      ",",
+      [0, 0, 1, 1, 0].pack("vvvvC"),
+      [2, 2, 0x4c, 0x01, 0].pack("C*"),
+      ";"
+    ].join
   end
 end

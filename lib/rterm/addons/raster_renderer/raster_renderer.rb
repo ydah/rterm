@@ -69,6 +69,7 @@ module RTerm
         @draw_images = @options.fetch(:draw_images, true) != false
         @draw_cursor = @options.fetch(:draw_cursor, true) != false
         @glyph_renderer = @options[:glyph_renderer]
+        @image_frame = [@options[:image_frame].to_i, 0].max
         @cursor_blink_interval = positive_float(@options[:cursor_blink_interval], 0.5)
         @cursor_visible = true
         @last_cursor_tick = nil
@@ -279,12 +280,13 @@ module RTerm
         source_height = [decoded[:height].to_i, 1].max
         target_width = [image_cols(source) * @cell_width, source_width].max
         target_height = [image_rows(source) * @cell_height, source_height].max
+        pixels = rgba_pixels(decoded)
 
         target_height.times do |target_y|
           source_y = [(target_y * source_height / target_height), source_height - 1].min
           target_width.times do |target_x|
             source_x = [(target_x * source_width / target_width), source_width - 1].min
-            color = decoded[:pixels][source_y]&.[](source_x)
+            color = pixels[source_y]&.[](source_x)
             set_pixel(x + target_x, y + target_y, color) if color
           end
         end
@@ -294,11 +296,27 @@ module RTerm
           format: decoded[:format],
           media_type: decoded[:media_type],
           name: decoded[:name],
+          frame: selected_frame_index(decoded),
+          frame_count: decoded[:frame_count],
           x: x,
           y: y,
           width: target_width,
           height: target_height
         }.compact
+      end
+
+      def rgba_pixels(decoded)
+        frames = decoded[:frames]
+        return decoded[:pixels] unless frames.is_a?(Array) && !frames.empty?
+
+        frames[selected_frame_index(decoded)][:pixels]
+      end
+
+      def selected_frame_index(decoded)
+        frames = decoded[:frames]
+        return nil unless frames.is_a?(Array) && !frames.empty?
+
+        [@image_frame, frames.length - 1].min
       end
 
       def compose_indexed_image(decoded, x, y, source)
