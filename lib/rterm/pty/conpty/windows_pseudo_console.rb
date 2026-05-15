@@ -17,6 +17,7 @@ module RTerm
         PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE = 0x00020016
         WAIT_OBJECT_0 = 0
         ERROR_BROKEN_PIPE = 109
+        STARTF_USESTDHANDLES = 0x00000100
 
         if Gem.win_platform?
           module Kernel32
@@ -306,6 +307,7 @@ module RTerm
         def build_startup_info(attribute_list)
           startup_info = "\0".b * startup_info_ex_size
           startup_info[0, 4] = [startup_info_ex_size].pack("L<")
+          startup_info[startup_info_flags_offset, 4] = [STARTF_USESTDHANDLES].pack("L<")
           startup_info[startup_info_attribute_offset, pointer_size] = [Fiddle::Pointer[attribute_list].to_i].pack(pointer_pack)
           startup_info
         end
@@ -389,6 +391,10 @@ module RTerm
 
         def startup_info_attribute_offset
           pointer_size == 8 ? 104 : 68
+        end
+
+        def startup_info_flags_offset
+          pointer_size == 8 ? 60 : 44
         end
 
         def process_information_size
