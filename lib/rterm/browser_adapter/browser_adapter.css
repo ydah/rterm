@@ -39,6 +39,10 @@
   opacity: 0;
 }
 
+.rterm-browser.is-canvas .rterm-browser-screen {
+  opacity: 0;
+}
+
 .rterm-browser-row {
   display: block;
   height: 1.35em;

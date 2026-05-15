@@ -5,6 +5,20 @@ require "rspec/core/rake_task"
 
 RSpec::Core::RakeTask.new(:spec)
 
+namespace :e2e do
+  task :strict_env do
+    ENV["RTERM_STRICT_E2E"] = "1"
+  end
+
+  desc "Run integration and browser smoke specs with strict external dependency checks"
+  RSpec::Core::RakeTask.new(strict: :strict_env) do |task|
+    task.pattern = [
+      "spec/integration/**/*_spec.rb",
+      "spec/browser_adapter/browser_adapter_real_browser_spec.rb"
+    ]
+  end
+end
+
 namespace :docs do
   desc "Generate YARD documentation"
   task :yard do

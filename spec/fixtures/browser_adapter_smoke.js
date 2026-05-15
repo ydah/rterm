@@ -37,6 +37,9 @@ class FakeElement {
     this.eventHandlers = {};
     this.tabIndex = -1;
     this.textContent = "";
+    this.width = 0;
+    this.height = 0;
+    this.lastImageData = null;
   }
 
   set className(value) {
@@ -68,6 +71,29 @@ class FakeElement {
 
   addEventListener(name, handler) {
     this.eventHandlers[name] = handler;
+  }
+
+  focus() {
+    this.focused = true;
+  }
+
+  blur() {
+    this.focused = false;
+  }
+
+  getContext(type) {
+    if (type !== "2d") return null;
+
+    return {
+      createImageData: (width, height) => ({
+        width,
+        height,
+        data: new Uint8ClampedArray(width * height * 4)
+      }),
+      putImageData: (image) => {
+        this.lastImageData = image;
+      }
+    };
   }
 
   getBoundingClientRect() {
@@ -155,6 +181,7 @@ const adapter = new global.RTermBrowserAdapter("#terminal", {
 const payload = adapter.createSessionPayload();
 assert.equal(payload.browserRenderer, "raster");
 assert.equal(payload.raster, true);
+assert.equal(adapter.getOption("renderer"), "raster");
 
 adapter.applyCommand({
   type: "screen",
@@ -203,5 +230,22 @@ adapter.applyCommand({
   }
 });
 assert.equal(cells[0].classList.contains("is-selected"), true);
+
+adapter.applyCommand({
+  type: "raster",
+  payload: {
+    frame: {
+      width: 1,
+      height: 1,
+      pixels: [[[12, 34, 56, 255]]]
+    }
+  }
+});
+assert.equal(adapter.canvas.lastImageData.data[0], 12);
+assert.equal(adapter.canvas.lastImageData.data[1], 34);
+assert.equal(adapter.canvas.lastImageData.data[2], 56);
+assert.deepEqual(adapter.fit().cell, adapter.cell);
+adapter.refresh().setOption("rows", 3).focus().blur();
+assert.equal(adapter.rows, 3);
 
 console.log("browser-adapter-smoke-ok");

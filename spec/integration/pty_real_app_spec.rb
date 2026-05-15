@@ -42,7 +42,7 @@ RSpec.describe "PTY real application integration" do
     vttest = required_command("vttest")
 
     _terminal, raw, _status = run_vttest_app(vttest)
-    skip "vttest did not render a menu in this PTY environment" unless vttest_menu?(raw)
+    require_vttest_menu!(raw)
 
     expect(raw).to match(/VT|test/i)
   end
@@ -114,8 +114,21 @@ RSpec.describe "PTY real application integration" do
     return path if path
 
     message = "#{command} not installed"
-    raise message if ENV["CI"] || ENV["RTERM_STRICT_E2E"] == "1"
+    raise message if strict_e2e?
 
     skip message
+  end
+
+  def require_vttest_menu!(raw)
+    return if vttest_menu?(raw)
+
+    message = "vttest did not render a menu in this PTY environment"
+    raise message if strict_e2e?
+
+    skip message
+  end
+
+  def strict_e2e?
+    ENV["CI"] || ENV["RTERM_STRICT_E2E"] == "1"
   end
 end

@@ -195,12 +195,41 @@ module RTerm
           decoded = decode_image(image)
           next unless decoded
 
-          if decoded[:format] == :indexed_rgba
+          if decoded[:format] == :rgba
+            compose_rgba_image(decoded, col * @cell_width, row * @cell_height, image)
+          elsif decoded[:format] == :indexed_rgba
             compose_indexed_image(decoded, col * @cell_width, row * @cell_height, image)
           elsif decoded[:format] == :binary
             compose_binary_image_preview(decoded, col * @cell_width, row * @cell_height, image)
           end
         end
+      end
+
+      def compose_rgba_image(decoded, x, y, source)
+        source_width = [decoded[:width].to_i, 1].max
+        source_height = [decoded[:height].to_i, 1].max
+        target_width = [image_cols(source) * @cell_width, source_width].max
+        target_height = [image_rows(source) * @cell_height, source_height].max
+
+        target_height.times do |target_y|
+          source_y = [(target_y * source_height / target_height), source_height - 1].min
+          target_width.times do |target_x|
+            source_x = [(target_x * source_width / target_width), source_width - 1].min
+            color = decoded[:pixels][source_y]&.[](source_x)
+            set_pixel(x + target_x, y + target_y, color) if color
+          end
+        end
+
+        @frame[:images] << {
+          protocol: source[:protocol],
+          format: decoded[:format],
+          media_type: decoded[:media_type],
+          name: decoded[:name],
+          x: x,
+          y: y,
+          width: target_width,
+          height: target_height
+        }.compact
       end
 
       def compose_indexed_image(decoded, x, y, source)

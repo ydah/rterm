@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "png_decoder"
+
 module RTerm
   module Common
     class Iterm2Decoder
@@ -14,9 +16,9 @@ module RTerm
 
       def decode
         bytes = decode_payload(@image[:data].to_s)
-        {
+        decoded = decode_binary(bytes)
+        payload = {
           protocol: :iterm2,
-          format: :binary,
           bytes: bytes,
           byte_size: bytes.bytesize,
           name: decoded_name,
@@ -24,10 +26,18 @@ module RTerm
           width: @attributes["width"],
           height: @attributes["height"],
           inline: @attributes["inline"] == "1"
-        }.compact
+        }
+        payload.merge(decoded).compact
       end
 
       private
+
+      def decode_binary(bytes)
+        png = PngDecoder.decode(bytes)
+        return png if png
+
+        { format: :binary }
+      end
 
       def decode_payload(data)
         data.unpack1("m0")

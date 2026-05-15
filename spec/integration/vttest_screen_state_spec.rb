@@ -15,7 +15,7 @@ RSpec.describe "vttest screen-state assertions" do
     end
 
     wait_until(timeout: 8.0) { pty.exit_status || vttest_menu?(raw) }
-    skip "vttest did not render a menu in this PTY environment" unless vttest_menu?(raw)
+    require_vttest_menu!(raw)
 
     pty.write("q")
     wait_until(timeout: 1.0) { pty.exit_status }
@@ -35,6 +35,15 @@ RSpec.describe "vttest screen-state assertions" do
 
   def vttest_menu?(raw)
     raw.match?(/VT|test/i)
+  end
+
+  def require_vttest_menu!(raw)
+    return if vttest_menu?(raw)
+
+    message = "vttest did not render a menu in this PTY environment"
+    raise message if ENV["CI"] || ENV["RTERM_STRICT_E2E"] == "1"
+
+    skip message
   end
 
   def wait_until(timeout:)

@@ -255,13 +255,13 @@ end
 | `Fit` | Compute terminal dimensions from available space. |
 | `Clipboard` | Handle text copy/paste and OSC 52 policy flows. |
 | `Progress` | Track OSC 9 progress state. |
-| `Image` | Track, decode, filter, and dispatch image payloads. |
+| `Image` | Track, decode, filter, and dispatch Sixel and inline PNG image payloads. |
 | `Ligatures` | Compute character join ranges. |
 | `Unicode11`, `UnicodeGraphemes` | Switch width providers and measure grapheme clusters. |
 | `WebFonts` | Register font faces, resolve fallback families, estimate cells, expose CSS, and trigger relayout events. |
 | `HostIntegration` | Bridge host mount, input, clipboard, font measurement, renderer, and accessibility events. |
 | `ScreenRenderer`, `HtmlRenderer`, `RasterRenderer` | Produce headless render trees, HTML/ARIA output, and RGBA frames. |
-| `Canvas`, `WebGL` | Track external renderer lifecycle and cache state; browser assets include a WebGL canvas renderer with cursor, links, selection, and raster frame handling. |
+| `Canvas`, `WebGL` | Track external renderer lifecycle and cache state; browser assets include WebGL and 2D canvas rendering with cursor, links, selection, and raster frame handling. |
 | `WebLinks` | Detect and activate links with provider hooks. |
 
 ## Platform Notes
@@ -301,6 +301,14 @@ bundle install
 bundle exec rspec
 bundle exec rake package:verify_contents
 ```
+
+Strict integration checks can be run when external terminal tools and browser automation are installed:
+
+```bash
+bundle exec rake e2e:strict
+```
+
+Set `RTERM_BROWSER_E2E=1` to require the Playwright browser smoke in local runs.
 
 Benchmarks live under `spec/benchmarks/` and can be run directly with Ruby:
 
