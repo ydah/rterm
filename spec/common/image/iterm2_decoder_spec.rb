@@ -120,6 +120,19 @@ RSpec.describe RTerm::Common::Iterm2Decoder do
     expect(decoded[:pixels][0][0]).to eq([191, 95, 95, 255])
   end
 
+  it "decodes inline lossless JPEG pixels when entropy data is supported" do
+    image = {
+      protocol: :iterm2,
+      attributes: { "inline" => "1" },
+      data: [lossless_jpeg_bytes].pack("m0")
+    }
+
+    decoded = described_class.decode(image)
+
+    expect(decoded).to include(protocol: :iterm2, format: :rgba, media_type: :jpeg, width: 2, height: 1)
+    expect(decoded[:pixels]).to eq([[[128, 128, 128, 255], [129, 129, 129, 255]]])
+  end
+
   def png_bytes
     header = [1, 1, 8, 6, 0, 0, 0].pack("NNCCCCC")
     row = [0, 255, 0, 0, 255].pack("C*")
@@ -188,6 +201,17 @@ RSpec.describe RTerm::Common::Iterm2Decoder do
       jpeg_segment(0xc4, [0x10, 1, *Array.new(15, 0), 0].pack("C*")),
       jpeg_segment(0xda, [4, 1, 0, 2, 0, 3, 0, 4, 0, 0, 63, 0].pack("C*")),
       "\x80\x80".b,
+      "\xff\xd9".b
+    ].join
+  end
+
+  def lossless_jpeg_bytes
+    [
+      "\xff\xd8".b,
+      jpeg_segment(0xc3, [8, 1, 2, 1, 1, 0x11, 0].pack("CnnCCCC")),
+      jpeg_segment(0xc4, [0, 1, 1, *Array.new(14, 0), 0, 1].pack("C*")),
+      jpeg_segment(0xda, [1, 1, 0, 1, 0, 0].pack("C*")),
+      "\x5f".b,
       "\xff\xd9".b
     ].join
   end

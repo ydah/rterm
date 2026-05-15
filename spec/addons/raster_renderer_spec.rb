@@ -149,6 +149,18 @@ RSpec.describe RTerm::Addon::RasterRenderer do
     expect(renderer.pixelAt(1, 1)).to eq([191, 95, 95, 255])
   end
 
+  it "composes iTerm2 lossless JPEG pixels into the raster frame" do
+    terminal = RTerm::Terminal.new(cols: 2, rows: 1)
+    renderer = described_class.new(cell_width: 4, cell_height: 4, draw_cursor: false)
+
+    terminal.load_addon(renderer)
+    terminal.write("\e]1337;File=name=test.jpg;inline=1;width=2;height=1:#{[lossless_jpeg_bytes].pack("m0")}\a")
+
+    expect(renderer.frame[:images].last).to include(protocol: :iterm2, format: :rgba, media_type: :jpeg)
+    expect(renderer.pixelAt(1, 1)).to eq([128, 128, 128, 255])
+    expect(renderer.pixelAt(5, 1)).to eq([129, 129, 129, 255])
+  end
+
   it "can compose a selected iTerm2 GIF animation frame" do
     terminal = RTerm::Terminal.new(cols: 1, rows: 1)
     renderer = described_class.new(cell_width: 4, cell_height: 4, draw_cursor: false, image_frame: 1)
@@ -228,6 +240,17 @@ RSpec.describe RTerm::Addon::RasterRenderer do
       jpeg_segment(0xc4, [0x10, 1, *Array.new(15, 0), 0].pack("C*")),
       jpeg_segment(0xda, [4, 1, 0, 2, 0, 3, 0, 4, 0, 0, 63, 0].pack("C*")),
       "\x80\x80".b,
+      "\xff\xd9".b
+    ].join
+  end
+
+  def lossless_jpeg_bytes
+    [
+      "\xff\xd8".b,
+      jpeg_segment(0xc3, [8, 1, 2, 1, 1, 0x11, 0].pack("CnnCCCC")),
+      jpeg_segment(0xc4, [0, 1, 1, *Array.new(14, 0), 0, 1].pack("C*")),
+      jpeg_segment(0xda, [1, 1, 0, 1, 0, 0].pack("C*")),
+      "\x5f".b,
       "\xff\xd9".b
     ].join
   end

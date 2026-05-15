@@ -112,6 +112,7 @@ module RTerm
           precision: @precision,
           components: @components.length,
           color_space: color_space,
+          lossless: (true if lossless?),
           progressive: @frame_marker == 0xc2
         }.merge(extra).compact
       end
@@ -183,6 +184,7 @@ module RTerm
           decode_progressive_scan(EntropyReader.new(entropy))
           return nil
         end
+        return metadata(format: :rgba, pixels: decode_lossless_pixels(EntropyReader.new(entropy))) if lossless_supported?
         return metadata unless baseline_supported?
 
         pixels = decode_pixels(EntropyReader.new(entropy))
@@ -209,10 +211,21 @@ module RTerm
       end
 
       def baseline_supported?
-        @frame_marker == 0xc0 &&
-          @precision == 8 &&
+        [0xc0, 0xc1].include?(@frame_marker) &&
+          supported_precision? &&
           supported_component_count? &&
           @components.all? { |component| @quantization[component[:quantization_id]] }
+      end
+
+      def lossless?
+        @frame_marker == 0xc3
+      end
+
+      def lossless_supported?
+        lossless? &&
+          supported_precision? &&
+          supported_component_count? &&
+          @components.all? { |component| component[:h] == 1 && component[:v] == 1 }
       end
 
       def progressive?
@@ -221,9 +234,13 @@ module RTerm
 
       def progressive_supported?
         progressive? &&
-          @precision == 8 &&
+          supported_precision? &&
           supported_component_count? &&
           @components.all? { |component| @quantization[component[:quantization_id]] }
+      end
+
+      def supported_precision?
+        [8, 12].include?(@precision)
       end
 
       def supported_component_count?
@@ -455,6 +472,60 @@ module RTerm
         @progressive_blocks.fetch(component[:id]).fetch(block_y).fetch(block_x)
       end
 
+      def decode_lossless_pixels(reader)
+        planes = lossless_planes
+        @height.times do |y|
+          @width.times do |x|
+            @scan_components.each do |component|
+              table = @huffman[:dc][component[:dc_table] || 0]
+              raise ArgumentError, "missing JPEG Huffman table" unless table
+
+              diff_size = decode_huffman(reader, table)
+              diff = receive(reader, diff_size)
+              predicted = lossless_prediction(planes[component[:id]], x, y)
+              planes[component[:id]][y][x] = clamp_sample(predicted + diff)
+            end
+          end
+        end
+        compose_pixels(normalize_planes(planes))
+      end
+
+      def lossless_planes
+        @components.each_with_object({}) do |component, result|
+          result[component[:id]] = Array.new(@height) { Array.new(@width, nil) }
+        end
+      end
+
+      def lossless_prediction(plane, x, y)
+        return initial_lossless_prediction if x.zero? && y.zero?
+        return plane[y][x - 1] if y.zero?
+        return plane[y - 1][x] if x.zero?
+
+        left = plane[y][x - 1]
+        above = plane[y - 1][x]
+        upper_left = plane[y - 1][x - 1]
+        case @spectral_start
+        when 1 then left
+        when 2 then above
+        when 3 then upper_left
+        when 4 then left + above - upper_left
+        when 5 then left + ((above - upper_left) / 2)
+        when 6 then above + ((left - upper_left) / 2)
+        when 7 then (left + above) / 2
+        else raise ArgumentError, "unsupported JPEG lossless predictor"
+        end
+      end
+
+      def initial_lossless_prediction
+        1 << (@precision - @successive_low - 1)
+      end
+
+      def normalize_planes(planes)
+        planes.transform_values do |plane|
+          plane.map { |row| row.map { |value| normalize_sample(value << @successive_low) } }
+        end
+      end
+
       def decode_pixels(reader)
         max_h = @components.map { |component| component[:h] }.max
         max_v = @components.map { |component| component[:v] }.max
@@ -550,7 +621,7 @@ module RTerm
                        Math.cos(((2 * y + 1) * v * Math::PI) / 16.0)
               end
             end
-            clamp((sum / 4.0).round + 128)
+            normalize_sample((sum / 4.0).round + sample_center)
           end
         end
       end
@@ -660,6 +731,24 @@ module RTerm
 
       def ycck_transform?
         @adobe_transform == 2
+      end
+
+      def sample_center
+        1 << (@precision - 1)
+      end
+
+      def sample_max
+        (1 << @precision) - 1
+      end
+
+      def normalize_sample(value)
+        return clamp(value) if @precision == 8
+
+        clamp(((clamp_sample(value) * 255.0) / sample_max).round)
+      end
+
+      def clamp_sample(value)
+        [[value, 0].max, sample_max].min
       end
 
       def clamp(value)
