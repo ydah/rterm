@@ -192,6 +192,8 @@ module RTerm
         when :context_menu then @terminal.context_menu_event(data)
         when :scroll then scroll_terminal(data)
         when :render then request_render(start_row: data.fetch(:start, 0), end_row: data[:end])
+        when :renderer_context_loss then command(:renderer_context_loss, data)
+        when :renderer_context_restore then command(:renderer_context_restore, data)
         else
           raise ArgumentError, "unknown host event: #{type}"
         end

@@ -92,6 +92,14 @@ RSpec.describe RTerm::BrowserBridge::ProtocolHandler do
       expect(msg['payload']['client_id']).to eq('c1')
     end
 
+    it '.host_command creates host_command message' do
+      json = described_class.host_command('s1', type: :screen, payload: { rows: [] })
+      msg = JSON.parse(json)
+      expect(msg['type']).to eq('host_command')
+      expect(msg['session_id']).to eq('s1')
+      expect(msg['payload']['command']['type']).to eq('screen')
+    end
+
     it '.negotiated creates negotiated message' do
       json = described_class.negotiated(binary: true)
       msg = JSON.parse(json)
@@ -332,6 +340,7 @@ RSpec.describe RTerm::BrowserBridge::SessionManager do
       snapshot = manager.attach_session(id, client_id: "client-1")
 
       expect(snapshot).to include("client_id" => "client-1", "cols" => 100, "rows" => 30)
+      expect(snapshot["host_commands"].map { |command| command[:type] }).to include(:mount, :screen)
       expect(manager.attached_clients(id)).to eq(["client-1"])
     end
 
@@ -555,9 +564,27 @@ RSpec.describe RTerm::BrowserBridge::SessionManager do
 
     it 'handles resize' do
       id = manager.create_session
-      msg = { type: 'resize', session_id: id, payload: { 'cols' => 120, 'rows' => 40 } }
+      msg = { type: 'resize', session_id: id, payload: { 'cols' => 120, 'rows' => 40, 'cellWidth' => 10, 'cellHeight' => 20 } }
       manager.process_message(msg)
       expect(manager.get_terminal(id).cols).to eq(120)
+      service = manager.get_terminal(id).internal.services.get(RTerm::Services::CHAR_SIZE_SERVICE)
+      expect(service.size).to eq(width: 10, height: 20, source: :measured)
+    end
+
+    it 'handles host_event messages' do
+      id = manager.create_session
+      commands = []
+      manager.on_command { |_session_id, command| commands << command }
+
+      manager.process_message(
+        type: 'hostEvent',
+        session_id: id,
+        payload: { type: 'paste', text: 'from browser' }
+      )
+
+      terminal = manager.get_terminal(id)
+      expect(terminal.textarea.value).to eq("from browser")
+      expect(commands.map { |command| command[:type] }).to include(:input)
     end
 
     it 'handles destroy_session' do

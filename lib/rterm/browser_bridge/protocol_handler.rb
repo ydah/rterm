@@ -12,6 +12,7 @@ module RTerm
         # Client → Server
         INPUT           = 'input'
         RESIZE          = 'resize'
+        HOST_EVENT      = 'host_event'
         CREATE_SESSION  = 'create_session'
         ATTACH_SESSION  = 'attach_session'
         DETACH_SESSION  = 'detach_session'
@@ -28,6 +29,7 @@ module RTerm
         SESSION_RESUMED  = 'session_resumed'
         SESSION_DESTROYED = 'session_destroyed'
         SESSION_EXIT     = 'session_exit'
+        HOST_COMMAND     = 'host_command'
         NEGOTIATED       = 'negotiated'
         PONG             = 'pong'
         ERROR            = 'error'
@@ -168,6 +170,10 @@ module RTerm
 
       def self.session_exit(session_id, code)
         encode(MessageType::SESSION_EXIT, session_id: session_id, payload: { 'code' => code })
+      end
+
+      def self.host_command(session_id, command)
+        encode(MessageType::HOST_COMMAND, session_id: session_id, payload: { 'command' => command })
       end
 
       def self.pong

@@ -3,6 +3,8 @@
 require 'securerandom'
 require 'set'
 require_relative "../common/event_emitter"
+require_relative "../addons/host_integration/host_integration"
+require_relative "../addons/screen_renderer/screen_renderer"
 require_relative "../pty/pty"
 require_relative "../terminal_options"
 
@@ -35,6 +37,7 @@ module RTerm
         @attach_policy = attach_policy.to_sym
         @clock = clock
         @output_callbacks = []
+        @command_callbacks = []
         @exit_callbacks = []
         @message_history = Hash.new { |hash, key| hash[key] = [] }
       end
@@ -59,10 +62,11 @@ module RTerm
 
         terminal = RTerm::Terminal.new(terminal_options)
         pty = create_pty(session_options, cols, rows)
-        wire_pty(session_id, terminal, pty) if pty
         @sessions[session_id] = {
           terminal: terminal,
           pty: pty,
+          host_integration: nil,
+          screen_renderer: nil,
           created_at: now,
           last_activity_at: now,
           last_heartbeat_at: now,
@@ -70,6 +74,8 @@ module RTerm
           output_queue: [],
           queued_output_bytes: 0
         }
+        install_host_addons(session_id, @sessions[session_id])
+        wire_pty(session_id, terminal, pty) if pty
 
         session_id
       end
@@ -141,11 +147,22 @@ module RTerm
       # @param session_id [String]
       # @param cols [Integer]
       # @param rows [Integer]
-      def resize(session_id, cols, rows)
+      def resize(session_id, cols, rows, cell_width: nil, cell_height: nil)
         session = get_session(session_id)
         touch(session)
+        measure_cell(session, cell_width, cell_height)
         session[:terminal].resize(cols, rows)
         session[:pty]&.resize(cols, rows)
+      end
+
+      def host_event(session_id, payload)
+        session = get_session(session_id)
+        touch(session)
+        data = normalize_payload(payload)
+        result = session[:host_integration].receive(data)
+        type = normalize_terminal_option_key(data[:type] || data[:event])
+        session[:pty]&.resize(session[:terminal].cols, session[:terminal].rows) if type == :resize
+        result
       end
 
       # Registers a callback for PTY output.
@@ -156,6 +173,13 @@ module RTerm
 
         @output_callbacks << block
         RTerm::Common::Disposable.new { @output_callbacks.delete(block) }
+      end
+
+      def on_command(&block)
+        raise ArgumentError, "on_command requires a block" unless block
+
+        @command_callbacks << block
+        RTerm::Common::Disposable.new { @command_callbacks.delete(block) }
       end
 
       # Registers a callback for PTY exit.
@@ -251,7 +275,17 @@ module RTerm
           nil
 
         when ProtocolHandler::MessageType::RESIZE
-          resize(session_id, payload[:cols], payload[:rows])
+          resize(
+            session_id,
+            payload[:cols],
+            payload[:rows],
+            cell_width: payload[:cell_width],
+            cell_height: payload[:cell_height]
+          )
+          nil
+
+        when ProtocolHandler::MessageType::HOST_EVENT
+          host_event(session_id, payload)
           nil
 
         when ProtocolHandler::MessageType::PING
@@ -316,6 +350,7 @@ module RTerm
         ping: ProtocolHandler::MessageType::PING,
         input: ProtocolHandler::MessageType::INPUT,
         resize: ProtocolHandler::MessageType::RESIZE,
+        host_event: ProtocolHandler::MessageType::HOST_EVENT,
         negotiate: ProtocolHandler::MessageType::NEGOTIATE
       }.freeze
 
@@ -331,6 +366,19 @@ module RTerm
         client_id
         terminal_options
         options
+        type
+        event
+        key
+        text
+        value
+        selection
+        modifiers
+        cell_width
+        cell_height
+        x
+        y
+        col
+        row
       ].freeze
 
       def get_session(session_id)
@@ -479,7 +527,8 @@ module RTerm
           'title' => terminal.title,
           'icon_name' => terminal.icon_name,
           'modes' => terminal.modes,
-          'images' => terminal.images
+          'images' => terminal.images,
+          'host_commands' => session[:host_integration]&.commands&.last(20) || []
         }
       end
 
@@ -530,6 +579,31 @@ module RTerm
           session[:queued_output_bytes] -= data.to_s.bytesize
           @output_callbacks.dup.each { |callback| callback.call(session_id, data) }
         end
+      end
+
+      def queue_host_command(session_id, command)
+        @command_callbacks.dup.each { |callback| callback.call(session_id, command) }
+      end
+
+      def install_host_addons(session_id, session)
+        host = RTerm::Addon::HostIntegration.new(
+          auto_mount: true,
+          transport: ->(command) { queue_host_command(session_id, command) if session_exists?(session_id) }
+        )
+        screen = RTerm::Addon::ScreenRenderer.new
+        session[:terminal].load_addon(host)
+        session[:terminal].load_addon(screen)
+        session[:host_integration] = host
+        session[:screen_renderer] = screen
+      end
+
+      def measure_cell(session, width, height)
+        return if width.nil? || height.nil?
+
+        session[:terminal].internal.services.get(RTerm::Services::CHAR_SIZE_SERVICE).measure(
+          width: width,
+          height: height
+        )
       end
 
       def create_pty(options, cols, rows)

@@ -1,0 +1,57 @@
+.rterm-browser {
+  background: #0b0f14;
+  color: #e5e7eb;
+  display: grid;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 14px;
+  line-height: 1.35;
+  min-height: 240px;
+  overflow: hidden;
+  position: relative;
+}
+
+.rterm-browser:focus {
+  outline: 2px solid #38bdf8;
+  outline-offset: -2px;
+}
+
+.rterm-browser-screen {
+  contain: strict;
+  grid-area: 1 / 1;
+  overflow: hidden;
+  white-space: pre;
+}
+
+.rterm-browser-row {
+  display: block;
+  height: 1.35em;
+}
+
+.rterm-browser-cell {
+  display: inline-block;
+  min-width: 1ch;
+}
+
+.rterm-browser-textarea {
+  height: 1px;
+  inset: 0 auto auto 0;
+  opacity: 0;
+  position: absolute;
+  width: 1px;
+}
+
+.rterm-browser-measure {
+  left: -10000px;
+  position: absolute;
+  top: -10000px;
+  white-space: pre;
+}
+
+.rterm-browser-live {
+  height: 1px;
+  left: -10000px;
+  overflow: hidden;
+  position: absolute;
+  top: auto;
+  width: 1px;
+}

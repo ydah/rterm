@@ -25,7 +25,14 @@ namespace :package do
     forbidden = spec.files.grep(%r{\A(?:spec|\.idea|\.github|tmp|pkg|doc)/})
     raise "Forbidden files in package: #{forbidden.join(', ')}" unless forbidden.empty?
 
-    required = %w[lib/rterm.rb README.md LICENSE.txt]
+    required = %w[
+      lib/rterm.rb
+      lib/rterm/browser_adapter.rb
+      lib/rterm/browser_adapter/browser_adapter.css
+      lib/rterm/browser_adapter/browser_adapter.js
+      README.md
+      LICENSE.txt
+    ]
     missing = required - spec.files
     raise "Missing required files from package: #{missing.join(', ')}" unless missing.empty?
   end

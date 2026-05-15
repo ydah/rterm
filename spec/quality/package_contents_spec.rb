@@ -5,6 +5,11 @@ RSpec.describe "gem package contents" do
     spec = Gem::Specification.load(File.expand_path("../../rterm.gemspec", __dir__))
 
     expect(spec.files).to include("lib/rterm.rb", "README.md", "LICENSE.txt")
+    expect(spec.files).to include(
+      "lib/rterm/browser_adapter.rb",
+      "lib/rterm/browser_adapter/browser_adapter.js",
+      "lib/rterm/browser_adapter/browser_adapter.css"
+    )
     expect(spec.files.grep(%r{\A(?:spec|\.idea|\.github|tmp|pkg|doc)/})).to be_empty
   end
 end

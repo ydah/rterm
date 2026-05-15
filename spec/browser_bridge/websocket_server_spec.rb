@@ -154,6 +154,17 @@ RSpec.describe RTerm::BrowserBridge::WebSocketServer do
     expect(decoded).to eq({ type: "output", session_id: session_id, payload: { "data" => "abc" } })
   end
 
+  it "sends host commands as JSON messages" do
+    socket = FakeSocket.new
+    described_class.send(:wire_socket, socket)
+
+    session_id = described_class.session_manager.create_session
+    command = socket.sent.map { |raw| JSON.parse(raw) }.find { |message| message["type"] == "host_command" }
+
+    expect(command["session_id"]).to eq(session_id)
+    expect(command["payload"]["command"]["type"]).to eq("activate")
+  end
+
   it "disposes socket callbacks when the socket closes" do
     socket = FakeSocket.new
     described_class.send(:wire_socket, socket)

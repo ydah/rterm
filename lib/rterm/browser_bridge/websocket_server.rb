@@ -120,12 +120,16 @@ module RTerm
               binary_output ? ProtocolHandler.encode_binary(:output, data, session_id: session_id) : ProtocolHandler.output(session_id, data)
             )
           end
+          command_subscription = session_manager.on_command do |session_id, command|
+            socket.send(ProtocolHandler.host_command(session_id, command))
+          end
           exit_subscription = session_manager.on_exit do |session_id, code|
             socket.send(ProtocolHandler.session_exit(session_id, code))
           end
 
           socket.on(:close) do |_event|
             output_subscription.dispose
+            command_subscription.dispose
             exit_subscription.dispose
           end
 

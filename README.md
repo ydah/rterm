@@ -11,6 +11,7 @@ application.
 - OSC/DCS support for hyperlinks, clipboard policy hooks, Sixel, iTerm2 images, progress, colors, and window operations.
 - PTY helpers for interactive processes, cwd/env, stdin close, pause/resume, process groups, and exit lifecycle.
 - BrowserBridge protocol for WebSocket sessions with resume, attach policies, rate limits, heartbeats, origin checks, and binary frames.
+- Browser adapter assets for DOM rendering, input, clipboard, font measurement, resize observation, and renderer lifecycle events.
 - Rendering helpers for headless element trees, RGBA raster frames, renderer lifecycle state, and image decoding.
 - Addon APIs for search, serialization, clipboard, links, fonts, Unicode widths, ligatures, and renderer integrations.
 
@@ -127,6 +128,23 @@ host.mount(focus: true)
 
 host.receive(type: :resize, cols: 120, rows: 34, cellWidth: 9, cellHeight: 18)
 host.receive(type: :key, key: :enter)
+```
+
+Bundled browser assets can mount that stream directly in a page:
+
+```ruby
+app = lambda do |_env|
+  [
+    200,
+    { "content-type" => "text/html" },
+    [
+      RTerm::BrowserAdapter.style_tag,
+      %(<div id="terminal" style="height: 480px"></div>),
+      RTerm::BrowserAdapter.script_tag,
+      %(<script>new RTermBrowserAdapter("#terminal", { url: "wss://your-app.example/terminal" });</script>)
+    ]
+  ]
+end
 ```
 
 ### Terminal APIs
