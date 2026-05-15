@@ -37,6 +37,7 @@ module RTerm
         @previous_dc = Hash.new(0)
         @progressive_blocks = nil
         @eob_run = 0
+        @adobe_transform = nil
       end
 
       def decode
@@ -74,6 +75,8 @@ module RTerm
           parse_quantization(payload)
         elsif marker == 0xc4
           parse_huffman(payload)
+        elsif marker == 0xee
+          parse_adobe(payload)
         elsif SOF_MARKERS.include?(marker)
           parse_frame(marker, payload)
         end
@@ -108,6 +111,7 @@ module RTerm
           height: @height,
           precision: @precision,
           components: @components.length,
+          color_space: color_space,
           progressive: @frame_marker == 0xc2
         }.merge(extra).compact
       end
@@ -132,6 +136,12 @@ module RTerm
           values.each_with_index { |value, index| table[ZIGZAG[index]] = value }
           @quantization[table_id] = table
         end
+      end
+
+      def parse_adobe(payload)
+        return unless payload.start_with?("Adobe") && payload.bytesize >= 12
+
+        @adobe_transform = payload.getbyte(11)
       end
 
       def parse_huffman(payload)
@@ -201,7 +211,7 @@ module RTerm
       def baseline_supported?
         @frame_marker == 0xc0 &&
           @precision == 8 &&
-          [1, 3].include?(@components.length) &&
+          supported_component_count? &&
           @components.all? { |component| @quantization[component[:quantization_id]] }
       end
 
@@ -212,8 +222,12 @@ module RTerm
       def progressive_supported?
         progressive? &&
           @precision == 8 &&
-          [1, 3].include?(@components.length) &&
+          supported_component_count? &&
           @components.all? { |component| @quantization[component[:quantization_id]] }
+      end
+
+      def supported_component_count?
+        [1, 3, 4].include?(@components.length)
       end
 
       def read_entropy_data
@@ -557,12 +571,34 @@ module RTerm
           return Array.new(@height) { |y| Array.new(@width) { |x| grayscale(gray, x, y) } }
         end
 
+        return compose_four_component_pixels(planes) if @components.length == 4
+
         y_plane = planes[@components[0][:id]]
         cb_plane = planes[@components[1][:id]]
         cr_plane = planes[@components[2][:id]]
         Array.new(@height) do |y|
           Array.new(@width) do |x|
-            ycbcr(sample(y_plane, x, y), sample(cb_plane, x, y), sample(cr_plane, x, y))
+            if rgb_transform?
+              rgb(sample(y_plane, x, y), sample(cb_plane, x, y), sample(cr_plane, x, y))
+            else
+              ycbcr(sample(y_plane, x, y), sample(cb_plane, x, y), sample(cr_plane, x, y))
+            end
+          end
+        end
+      end
+
+      def compose_four_component_pixels(planes)
+        first_plane = planes[@components[0][:id]]
+        second_plane = planes[@components[1][:id]]
+        third_plane = planes[@components[2][:id]]
+        fourth_plane = planes[@components[3][:id]]
+        Array.new(@height) do |y|
+          Array.new(@width) do |x|
+            first = sample(first_plane, x, y)
+            second = sample(second_plane, x, y)
+            third = sample(third_plane, x, y)
+            fourth = sample(fourth_plane, x, y)
+            ycck_transform? ? ycck(first, second, third, fourth) : cmyk(first, second, third, fourth)
           end
         end
       end
@@ -579,14 +615,51 @@ module RTerm
       end
 
       def ycbcr(y, cb, cr)
+        rgb(*ycbcr_rgb(y, cb, cr))
+      end
+
+      def ycbcr_rgb(y, cb, cr)
         cb -= 128
         cr -= 128
         [
           clamp(y + (1.402 * cr).round),
           clamp(y - (0.344_136 * cb).round - (0.714_136 * cr).round),
-          clamp(y + (1.772 * cb).round),
+          clamp(y + (1.772 * cb).round)
+        ]
+      end
+
+      def ycck(y, cb, cr, key)
+        red, green, blue = ycbcr_rgb(y, cb, cr)
+        cmyk(255 - red, 255 - green, 255 - blue, key)
+      end
+
+      def cmyk(cyan, magenta, yellow, key)
+        [
+          clamp(255 - [cyan + key, 255].min),
+          clamp(255 - [magenta + key, 255].min),
+          clamp(255 - [yellow + key, 255].min),
           255
         ]
+      end
+
+      def rgb(red, green, blue)
+        [red, green, blue, 255]
+      end
+
+      def color_space
+        return :grayscale if @components.length == 1
+        return rgb_transform? ? :rgb : :ycbcr if @components.length == 3
+        return ycck_transform? ? :ycck : :cmyk if @components.length == 4
+
+        nil
+      end
+
+      def rgb_transform?
+        @adobe_transform == 0
+      end
+
+      def ycck_transform?
+        @adobe_transform == 2
       end
 
       def clamp(value)
