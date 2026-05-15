@@ -60,6 +60,13 @@ RSpec.describe RTerm::Common::JpegDecoder do
     expect(decoded[:pixels]).to eq([[[128, 128, 128, 255], [129, 129, 129, 255]]])
   end
 
+  it "decodes 16-bit lossless grayscale JPEG pixels" do
+    decoded = described_class.decode(sixteen_bit_lossless_jpeg_bytes)
+
+    expect(decoded).to include(format: :rgba, media_type: :jpeg, width: 2, height: 1, precision: 16, lossless: true)
+    expect(decoded[:pixels]).to eq([[[128, 128, 128, 255], [129, 129, 129, 255]]])
+  end
+
   it "decodes sampled lossless grayscale JPEG pixels" do
     decoded = described_class.decode(sampled_lossless_jpeg_bytes)
 
@@ -208,6 +215,17 @@ RSpec.describe RTerm::Common::JpegDecoder do
       jpeg_segment(0xc4, [0, 1, 1, *Array.new(14, 0), 0, 1].pack("C*")),
       jpeg_segment(0xda, [1, 1, 0, 1, 0, 0].pack("C*")),
       "\x5f".b,
+      "\xff\xd9".b
+    ].join
+  end
+
+  def sixteen_bit_lossless_jpeg_bytes
+    [
+      "\xff\xd8".b,
+      jpeg_segment(0xc3, [16, 1, 2, 1, 1, 0x11, 0].pack("CnnCCCC")),
+      jpeg_segment(0xc4, [0, 1, 1, *Array.new(14, 0), 0, 9].pack("C*")),
+      jpeg_segment(0xda, [1, 1, 0, 1, 0, 0].pack("C*")),
+      "\x50\x1f".b,
       "\xff\xd9".b
     ].join
   end

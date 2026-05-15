@@ -17,7 +17,7 @@ Use `RTerm::Addon::ScreenRenderer` when a Ruby-side render tree is needed. It re
 
 Use `RTerm::Addon::HtmlRenderer` when HTML and ARIA output is needed. It renders escaped terminal cells, row and cell roles, live-region text, and a standalone document option.
 
-Use `RTerm::Addon::RasterRenderer` when a Ruby-side pixel frame is needed. It renders cells into an RGBA buffer, draws built-in bitmap text masks, advances cursor blink state, composites decoded Sixel, PNG, GIF, and JPEG images, including four-component, 12-bit, and sampled lossless color data, presents unsupported JPEG frame data as a deterministic raster preview, and can export a PPM image for tooling.
+Use `RTerm::Addon::RasterRenderer` when a Ruby-side pixel frame is needed. It renders cells into an RGBA buffer, draws built-in bitmap text masks, advances cursor blink state, composites decoded Sixel, PNG, GIF, and JPEG images, including four-component, 12-bit DCT, and up to 16-bit lossless color data, presents unsupported JPEG frame data as a deterministic raster preview, and can export a PPM image for tooling.
 
 Use `RTerm::Addon::HostIntegration` when a browser or native layer needs a stable command stream. It forwards mount, input, clipboard, font measurement, renderer, accessibility, and resize events, and it accepts host-originated key, mouse, paste, composition, viewport, and clipboard responses.
 

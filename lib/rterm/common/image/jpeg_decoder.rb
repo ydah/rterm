@@ -355,7 +355,7 @@ module RTerm
 
       def baseline_supported?
         [0xc0, 0xc1].include?(@frame_marker) &&
-          supported_precision? &&
+          dct_supported_precision? &&
           supported_component_count? &&
           @components.all? { |component| @quantization[component[:quantization_id]] }
       end
@@ -367,7 +367,7 @@ module RTerm
       def lossless_supported?
         lossless? &&
           !arithmetic? &&
-          supported_precision? &&
+          lossless_supported_precision? &&
           supported_component_count? &&
           @components.all? { |component| component[:h].positive? && component[:v].positive? }
       end
@@ -383,14 +383,14 @@ module RTerm
       def progressive_supported?
         progressive? &&
           !arithmetic? &&
-          supported_precision? &&
+          dct_supported_precision? &&
           supported_component_count? &&
           @components.all? { |component| @quantization[component[:quantization_id]] }
       end
 
       def arithmetic_sequential_supported?
         @frame_marker == 0xc9 &&
-          supported_precision? &&
+          dct_supported_precision? &&
           supported_component_count? &&
           @spectral_start.zero? &&
           @spectral_end == 63 &&
@@ -401,7 +401,7 @@ module RTerm
 
       def arithmetic_progressive_supported?
         @frame_marker == 0xca &&
-          supported_precision? &&
+          dct_supported_precision? &&
           supported_component_count? &&
           @components.all? { |component| @quantization[component[:quantization_id]] } &&
           progressive_scan_parameters?
@@ -409,7 +409,7 @@ module RTerm
 
       def arithmetic_lossless_supported?
         @frame_marker == 0xcb &&
-          supported_precision? &&
+          lossless_supported_precision? &&
           supported_component_count? &&
           @spectral_start.between?(1, 7) &&
           @spectral_end.zero? &&
@@ -428,7 +428,15 @@ module RTerm
       end
 
       def supported_precision?
+        dct_supported_precision? || lossless_supported_precision?
+      end
+
+      def dct_supported_precision?
         [8, 12].include?(@precision)
+      end
+
+      def lossless_supported_precision?
+        (2..16).include?(@precision)
       end
 
       def supported_component_count?
